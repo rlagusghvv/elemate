@@ -160,6 +160,20 @@ npm --workspace apps/desktop run pack
 npm --workspace apps/desktop run dist
 ```
 
+## 공개 사이트 서버
+
+맥미니에서 `공개 랜딩/다운로드 사이트`만 따로 돌리려면 아래 문서를 보면 됩니다.
+
+- [public-site-deploy.md](/Users/kimhyeonho/Documents/Playground/docs/public-site-deploy.md)
+
+핵심 명령만 적으면:
+
+```bash
+cp apps/web/.env.production.local.example apps/web/.env.production.local
+./scripts/setup_elemate_public_site.sh
+ELEMATE_PUBLIC_PORT=4010 ./scripts/install_elemate_public_site_launch_agent.sh
+```
+
 ## 저장소 구조
 
 - `apps/web`: 사용자 UI

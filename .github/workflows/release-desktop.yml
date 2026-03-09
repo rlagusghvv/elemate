@@ -12,6 +12,14 @@ on:
           - both
           - arm64
           - x64
+      notarize:
+        description: "Run Apple notarization"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
   push:
     tags:
       - "v*"
@@ -66,6 +74,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ELEMATE_NOTARIZE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.notarize || 'true' }}
           DEBUG: electron-builder*
 
       - name: Upload workflow artifacts

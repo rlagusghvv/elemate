@@ -6,6 +6,11 @@ module.exports = async function notarizeApp(context) {
     return;
   }
 
+  if (String(process.env.ELEMATE_NOTARIZE || "true").toLowerCase() === "false") {
+    console.log("Skipping notarization: ELEMATE_NOTARIZE=false");
+    return;
+  }
+
   const appleId = process.env.APPLE_ID;
   const appleIdPassword = process.env.APPLE_APP_SPECIFIC_PASSWORD;
   const teamId = process.env.APPLE_TEAM_ID;

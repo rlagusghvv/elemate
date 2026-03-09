@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DesktopAction",
+  "type": "object",
+  "required": [
+    "task_id",
+    "trace_id",
+    "timestamp",
+    "tool_name",
+    "action",
+    "status"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "trace_id": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tool_name": {
+      "type": "string",
+      "enum": [
+        "computer_use",
+        "browser.open",
+        "browser.extract"
+      ]
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "browser_open",
+        "click",
+        "double_click",
+        "type",
+        "keypress",
+        "scroll",
+        "screenshot",
+        "wait"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "running",
+        "completed",
+        "failed",
+        "blocked_for_approval"
+      ]
+    },
+    "target": {
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "coordinates": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false
+    },
+    "input_text": {
+      "type": "string"
+    },
+    "scroll_delta": {
+      "type": "object",
+      "properties": {
+        "dx": {
+          "type": "number"
+        },
+        "dy": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "requires_approval": {
+      "type": "boolean"
+    },
+    "approval_payload": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "artifact_path": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

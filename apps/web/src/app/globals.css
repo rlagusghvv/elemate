@@ -1,0 +1,219 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --font-display: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Helvetica Neue", sans-serif;
+  --font-body: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Helvetica Neue", sans-serif;
+  --font-mono: "SF Mono", "SFMono-Regular", "Menlo", monospace;
+  --bg-page: #02050b;
+  --bg-paper: rgba(8, 11, 18, 0.82);
+  --line-soft: rgba(255, 255, 255, 0.08);
+  --ink: #f5f7fb;
+  --steel: #9ea7b7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-body), sans-serif;
+  color: var(--ink);
+  line-height: 1.5;
+  letter-spacing: -0.016em;
+  background:
+    radial-gradient(circle at 12% 14%, rgba(113, 210, 255, 0.12), transparent 20%),
+    radial-gradient(circle at 84% 8%, rgba(137, 144, 255, 0.12), transparent 18%),
+    radial-gradient(circle at 50% 100%, rgba(255, 255, 255, 0.05), transparent 26%),
+    linear-gradient(180deg, #02050b 0%, #070c15 40%, #0b111a 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.14), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 32%);
+  opacity: 0.34;
+}
+
+main {
+  position: relative;
+  width: min(1320px, calc(100vw - 28px));
+  margin: 0 auto;
+  padding: 10px 0 80px;
+}
+
+.panel {
+  border: 1px solid var(--line-soft);
+  border-radius: 32px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
+    var(--bg-paper);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 40px 90px -56px rgba(0, 0, 0, 0.82);
+  animation: rise-in 420ms ease both;
+}
+
+.soft-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 22px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.hero-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 11px 16px;
+  font-weight: 600;
+  box-shadow: 0 12px 30px -24px rgba(0, 0, 0, 0.55);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8492a9;
+}
+
+.font-display {
+  font-family: var(--font-display), sans-serif;
+}
+
+.text-ink {
+  color: var(--ink);
+}
+
+.text-steel {
+  color: var(--steel);
+}
+
+.bg-ink {
+  background-color: var(--ink);
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+textarea {
+  letter-spacing: -0.015em;
+}
+
+@layer components {
+  .balance-text {
+    text-wrap: balance;
+  }
+
+  .ui-title-hero {
+    @apply balance-text font-display text-[46px] font-semibold leading-[1.02] tracking-[-0.07em] text-ink sm:text-[72px];
+  }
+
+  .ui-title-main {
+    @apply balance-text font-display text-[38px] font-semibold leading-[1.14] tracking-[-0.06em] text-ink sm:text-[56px];
+  }
+
+  .ui-title-section {
+    @apply balance-text font-display text-[30px] font-semibold leading-[1.14] tracking-[-0.05em] text-ink sm:text-[44px];
+  }
+
+  .ui-title-card {
+    @apply font-display text-[24px] font-semibold leading-[1.16] tracking-[-0.045em] text-ink;
+  }
+
+  .ui-copy-lg {
+    @apply text-[17px] leading-8 tracking-[-0.02em] text-steel;
+    word-spacing: 0.045em;
+  }
+
+  .ui-copy {
+    @apply text-[15px] leading-7 tracking-[-0.018em] text-steel;
+    word-spacing: 0.045em;
+  }
+
+  .ui-copy-sm {
+    @apply text-sm leading-7 tracking-[-0.016em] text-steel;
+    word-spacing: 0.045em;
+  }
+
+  .ui-button-primary {
+    @apply inline-flex min-h-11 items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110;
+  }
+
+  .ui-button-secondary {
+    @apply inline-flex min-h-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-medium text-ink transition hover:border-white/20 hover:bg-white/10;
+  }
+
+  .ui-button-tertiary {
+    @apply inline-flex min-h-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-ink transition hover:border-white/20 hover:bg-white/10;
+  }
+
+  .ui-chip {
+    @apply inline-flex min-h-9 items-center rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium tracking-[-0.01em] text-steel;
+  }
+
+  .ui-card {
+    @apply soft-card rounded-[28px] bg-white/[0.03] px-5 py-5 sm:px-6 sm:py-6;
+  }
+}
+
+.elephant-float {
+  animation: elephant-float 5.4s ease-in-out infinite;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes elephant-float {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(-1deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(1deg);
+  }
+}
+
+@media (max-width: 768px) {
+  main {
+    width: min(100vw - 18px, 100%);
+    padding-top: 10px;
+  }
+
+  .panel {
+    border-radius: 24px;
+  }
+}

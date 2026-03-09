@@ -1,0 +1,42 @@
+{
+  "name": "elemate-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "EleMate Electron desktop shell",
+  "author": "EleMate",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:mac:arm64": "electron-builder --mac dmg zip --arm64",
+    "dist:mac:x64": "electron-builder --mac dmg zip --x64"
+  },
+  "devDependencies": {
+    "electron": "37.3.1",
+    "electron-builder": "26.8.1"
+  },
+  "build": {
+    "appId": "ai.elemate.desktop",
+    "productName": "EleMate",
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "buildDependenciesFromSource": false,
+    "electronDist": "../../node_modules/electron/dist",
+    "directories": {
+      "output": "dist"
+    },
+    "artifactName": "EleMate-${version}-${arch}.${ext}",
+    "files": [
+      "main.cjs",
+      "preload.cjs"
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools"
+    }
+  }
+}

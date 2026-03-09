@@ -1,0 +1,26 @@
+{
+  "name": "elemate-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/desktop",
+    "apps/web",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace apps/web run dev",
+    "build:web": "npm --workspace apps/web run build",
+    "lint:web": "npm --workspace apps/web run lint",
+    "setup:desktop": "./scripts/setup_elemate_desktop.sh",
+    "setup:tailscale": "./scripts/setup_tailscale_serve.sh",
+    "install:daemon": "./scripts/install_elemate_launch_agent.sh",
+    "uninstall:daemon": "./scripts/uninstall_elemate_launch_agent.sh",
+    "status:daemon": "./scripts/status_elemate_launch_agent.sh",
+    "run:desktop": "./scripts/run_elemate_desktop.sh",
+    "start:desktop": "npm --workspace apps/desktop run start",
+    "pack:desktop": "npm --workspace apps/desktop run pack",
+    "dist:desktop": "npm --workspace apps/desktop run dist",
+    "dist:desktop:arm64": "npm --workspace apps/desktop run dist:mac:arm64",
+    "dist:desktop:x64": "npm --workspace apps/desktop run dist:mac:x64"
+  }
+}

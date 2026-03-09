@@ -48,9 +48,28 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
   }, []);
 
   useEffect(() => {
-    void refreshDashboard();
-    void refreshDesktopStatus();
+    void (async () => {
+      await refreshDesktopStatus();
+      await refreshDashboard();
+    })();
   }, []);
+
+  useEffect(() => {
+    if (variant !== "local") {
+      return;
+    }
+    const runtimeStatus = desktopStatus?.runtime?.api.status;
+    if (!runtimeStatus || !["installing", "starting"].includes(runtimeStatus)) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void refreshDesktopStatus();
+      void refreshDashboard();
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+  }, [desktopStatus?.runtime?.api.status, variant]);
 
   async function refreshDashboard() {
     setError(null);
@@ -69,6 +88,18 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
         window.localStorage.setItem(WORKSPACE_STORAGE_KEY, effectiveWorkspace);
       }
     } catch (loadError) {
+      const desktopBridge = window.elemateDesktop ?? window.forgeDesktop;
+      if (desktopBridge) {
+        try {
+          const status = await desktopBridge.getStatus();
+          setDesktopStatus(status);
+          if (status.runtime.mode === "bundled" && status.runtime.api.status !== "ready") {
+            return;
+          }
+        } catch {
+          // Keep the original API error if runtime status cannot be loaded.
+        }
+      }
       setError(loadError instanceof Error ? loadError.message : "상태를 불러오지 못했습니다.");
     }
   }
@@ -214,6 +245,42 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     }
   }
 
+  async function handleInstallLocalRuntime() {
+    const desktopBridge = window.elemateDesktop ?? window.forgeDesktop;
+    if (!desktopBridge) {
+      return;
+    }
+    setIsBusy(true);
+    setError(null);
+    try {
+      setDesktopStatus(await desktopBridge.installLocalRuntime());
+      await refreshDashboard();
+    } catch (desktopError) {
+      setError(desktopError instanceof Error ? desktopError.message : "앱 준비에 실패했습니다.");
+      await refreshDesktopStatus();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleRestartLocalServices() {
+    const desktopBridge = window.elemateDesktop ?? window.forgeDesktop;
+    if (!desktopBridge) {
+      return;
+    }
+    setIsBusy(true);
+    setError(null);
+    try {
+      setDesktopStatus(await desktopBridge.restartLocalServices());
+      await refreshDashboard();
+    } catch (desktopError) {
+      setError(desktopError instanceof Error ? desktopError.message : "로컬 서비스를 다시 시작하지 못했습니다.");
+      await refreshDesktopStatus();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function handleUninstallBackgroundAgent() {
     const desktopBridge = window.elemateDesktop ?? window.forgeDesktop;
     if (!desktopBridge) {
@@ -304,6 +371,8 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
             onOpenRemoteAccessApp={() => void handleOpenRemoteAccessApp()}
             onEnableRemoteAccess={() => void handleEnableTailscaleServe()}
             onInstallBackgroundAgent={() => void handleInstallBackgroundAgent()}
+            onInstallLocalRuntime={() => void handleInstallLocalRuntime()}
+            onRestartLocalServices={() => void handleRestartLocalServices()}
           />
 
           <section className="panel overflow-hidden px-6 py-6 sm:px-8 sm:py-8">

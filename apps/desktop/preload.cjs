@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 const desktopBridge = {
   getStatus: () => ipcRenderer.invoke("desktop:get-status"),
+  installLocalRuntime: () => ipcRenderer.invoke("desktop:install-local-runtime"),
+  restartLocalServices: () => ipcRenderer.invoke("desktop:restart-local-services"),
   chooseDirectory: () => ipcRenderer.invoke("desktop:choose-directory"),
   promptAccessibility: () => ipcRenderer.invoke("desktop:prompt-accessibility"),
   openSystemPreferences: (pane) => ipcRenderer.invoke("desktop:open-system-preferences", pane),

@@ -7,9 +7,11 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
+from .settings import DATA_DIR
+
 API_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_DB_PATH = API_DIR / "data" / "elemate.db"
-LEGACY_DB_PATH = API_DIR / "data" / "forgemate.db"
+DEFAULT_DB_PATH = DATA_DIR / "elemate.db"
+LEGACY_DB_PATH = DATA_DIR / "forgemate.db"
 
 
 def _resolve_database_url() -> str:

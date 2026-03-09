@@ -1,7 +1,7 @@
 {
   "name": "elemate-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "EleMate Electron desktop shell",
   "author": "EleMate",
   "main": "main.cjs",
@@ -29,6 +29,15 @@
     "files": [
       "main.cjs",
       "preload.cjs"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime",
+        "to": "runtime",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "mac": {
       "target": [

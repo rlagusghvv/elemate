@@ -7,6 +7,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..settings import DATA_DIR
+
 
 def _env_flag(name: str, default: bool) -> bool:
     value = os.getenv(name)
@@ -87,7 +89,7 @@ class RuntimeStatus:
 
 
 SUPPORTED_RUNTIME_MODES = {"auto", "codex", "live", "demo"}
-PREFERENCES_PATH = Path(__file__).resolve().parents[2] / "data" / "runtime_preferences.json"
+PREFERENCES_PATH = DATA_DIR / "runtime_preferences.json"
 
 
 def get_auth_session_status() -> AuthSessionStatus:

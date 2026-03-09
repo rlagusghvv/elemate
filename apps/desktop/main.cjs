@@ -15,19 +15,120 @@ function envFirst(...names) {
 const repoRootEnv = envFirst("ELEMATE_REPO_ROOT", "FORGE_REPO_ROOT");
 const SOURCE_REPO_ROOT = repoRootEnv ? path.resolve(repoRootEnv) : path.resolve(__dirname, "..", "..");
 const REPO_ROOT = app.isPackaged ? (repoRootEnv ? SOURCE_REPO_ROOT : null) : SOURCE_REPO_ROOT;
+const PACKAGED_RUNTIME_ROOT = app.isPackaged ? path.join(process.resourcesPath, "runtime") : null;
+const PACKAGED_WEB_ROOT = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "web") : null;
+const PACKAGED_API_DIR = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "api") : null;
+const PACKAGED_SCRIPTS_DIR = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "scripts") : null;
 const WEB_DIR = REPO_ROOT ? path.join(REPO_ROOT, "apps", "web") : null;
 const API_DIR = REPO_ROOT ? path.join(REPO_ROOT, "apps", "api") : null;
 const WEB_URL = envFirst("ELEMATE_DESKTOP_WEB_URL", "FORGE_DESKTOP_WEB_URL") || "http://127.0.0.1:3000";
 const API_URL = envFirst("ELEMATE_DESKTOP_API_URL", "FORGE_DESKTOP_API_URL") || "http://127.0.0.1:8000";
 const DAEMON_LABEL = "com.elemate.agent.daemon";
 const PYTHON_DOWNLOAD_URL = "https://www.python.org/downloads/macos/";
-const NODE_DOWNLOAD_URL = "https://nodejs.org/en/download";
 const CODEX_INSTALL_URL = "https://developers.openai.com/codex/cli";
 const TAILSCALE_DOWNLOAD_URL = "https://tailscale.com/download";
 
 let mainWindow = null;
 let apiProcess = null;
 let webProcess = null;
+let startingApiPromise = null;
+let runtimeState = {
+  mode: app.isPackaged ? "bundled" : REPO_ROOT ? "source" : "external",
+  support_dir: null,
+  data_dir: null,
+  logs_dir: null,
+  web: {
+    status: "idle",
+    message: null,
+    url: WEB_URL,
+    bundled: Boolean(PACKAGED_WEB_ROOT),
+  },
+  api: {
+    status: app.isPackaged ? "idle" : REPO_ROOT ? "idle" : "external",
+    message: null,
+    url: API_URL,
+    bundled: Boolean(PACKAGED_API_DIR),
+    python_path: null,
+    install_url: PYTHON_DOWNLOAD_URL,
+    last_installed_at: null,
+  },
+};
+
+function getPackagedPaths() {
+  const root = path.join(app.getPath("userData"), "local-runtime");
+  return {
+    root,
+    dataDir: path.join(root, "data"),
+    logsDir: path.join(root, "logs"),
+    artifactsDir: path.join(root, "artifacts"),
+    venvDir: path.join(root, "python"),
+    bootstrapPath: path.join(root, "bootstrap.json"),
+    bootstrapLogPath: path.join(root, "logs", "api-bootstrap.log"),
+    webServerScript: PACKAGED_WEB_ROOT ? path.join(PACKAGED_WEB_ROOT, "apps", "web", "server.js") : null,
+    webCwd: PACKAGED_WEB_ROOT ? path.join(PACKAGED_WEB_ROOT, "apps", "web") : null,
+    apiDir: PACKAGED_API_DIR,
+    scriptsDir: PACKAGED_SCRIPTS_DIR,
+  };
+}
+
+function refreshRuntimePaths() {
+  if (!app.isPackaged) {
+    return;
+  }
+  const paths = getPackagedPaths();
+  const bootstrap = readJsonFile(paths.bootstrapPath);
+  runtimeState = {
+    ...runtimeState,
+    support_dir: paths.root,
+    data_dir: paths.dataDir,
+    logs_dir: paths.logsDir,
+    api: {
+      ...runtimeState.api,
+      python_path: bootstrap?.python_path || runtimeState.api.python_path,
+      last_installed_at: bootstrap?.installed_at || runtimeState.api.last_installed_at,
+    },
+  };
+}
+
+function setRuntimeSection(section, patch) {
+  runtimeState = {
+    ...runtimeState,
+    [section]: {
+      ...runtimeState[section],
+      ...patch,
+    },
+  };
+}
+
+function ensurePackagedDirectories() {
+  const paths = getPackagedPaths();
+  fs.mkdirSync(paths.root, { recursive: true });
+  fs.mkdirSync(paths.dataDir, { recursive: true });
+  fs.mkdirSync(paths.logsDir, { recursive: true });
+  fs.mkdirSync(paths.artifactsDir, { recursive: true });
+  return paths;
+}
+
+function appendLog(filePath, message) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.appendFileSync(filePath, message, "utf8");
+}
+
+function readJsonFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeJsonFile(filePath, payload) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+}
 
 function getPythonCommand() {
   if (!API_DIR) {
@@ -38,6 +139,34 @@ function getPythonCommand() {
     return venvPython;
   }
   return "python3";
+}
+
+function getSystemPythonCommand() {
+  const candidates = [
+    envFirst("ELEMATE_PYTHON", "FORGE_PYTHON"),
+    "python3",
+    "/opt/homebrew/bin/python3",
+    "/usr/local/bin/python3",
+    "/usr/bin/python3",
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const resolved = candidate.includes("/") ? candidate : findExecutable(candidate);
+    if (!resolved || !fs.existsSync(resolved)) {
+      continue;
+    }
+
+    const version = spawnSync(resolved, ["-c", "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"], { encoding: "utf8" });
+    if (version.status !== 0) {
+      continue;
+    }
+    const [major, minor] = (version.stdout || "").trim().split(".").map((value) => Number.parseInt(value, 10));
+    if (major > 3 || (major === 3 && minor >= 11)) {
+      return resolved;
+    }
+  }
+
+  return null;
 }
 
 async function ensureService(url, commandFactory, name) {
@@ -83,45 +212,218 @@ function spawnApiServer() {
   });
 }
 
+function packagedApiEnvironment(paths) {
+  return {
+    ...process.env,
+    DATABASE_URL: `sqlite:///${path.join(paths.dataDir, "elemate.db")}`,
+    ELEMATE_BASE_DIR: paths.root,
+    ELEMATE_DATA_DIR: paths.dataDir,
+    ELEMATE_ARTIFACTS_DIR: paths.artifactsDir,
+    ELEMATE_LOGS_DIR: paths.logsDir,
+    ELEMATE_SCRIPTS_DIR: paths.scriptsDir || "",
+    ELEMATE_WORKSPACE_ROOT: app.getPath("home"),
+    ELEMATE_PACKAGED_RUNTIME: "1",
+  };
+}
+
+function getBundledApiPython(paths) {
+  return path.join(paths.venvDir, "bin", "python");
+}
+
+async function installBundledApiRuntime(forceInstall = false) {
+  const paths = ensurePackagedDirectories();
+  if (!paths.apiDir || !fs.existsSync(path.join(paths.apiDir, "pyproject.toml"))) {
+    throw new Error("패키지 안에 API 런타임이 들어 있지 않습니다. 최신 EleMate 설치 파일로 다시 설치하세요.");
+  }
+
+  const python = getSystemPythonCommand();
+  if (!python) {
+    setRuntimeSection("api", {
+      status: "needs-python",
+      message: "이 Mac에는 EleMate 로컬 엔진을 시작할 Python 3.11 이상이 없습니다. 설치 페이지를 열었습니다.",
+      python_path: null,
+    });
+    await shell.openExternal(PYTHON_DOWNLOAD_URL);
+    throw new Error("Python 3.11 이상이 필요합니다. 설치가 끝나면 `앱 준비 시작`을 다시 누르세요.");
+  }
+
+  const previous = readJsonFile(paths.bootstrapPath);
+  const venvPython = getBundledApiPython(paths);
+  const desiredVersion = app.getVersion();
+  const needsInstall =
+    forceInstall ||
+    !fs.existsSync(venvPython) ||
+    !previous ||
+    previous.app_version !== desiredVersion ||
+    previous.python_path !== python;
+
+  setRuntimeSection("api", {
+    status: needsInstall ? "installing" : "starting",
+    message: needsInstall ? "이 장비에 EleMate 로컬 엔진을 준비하고 있습니다." : "로컬 엔진을 시작하고 있습니다.",
+    python_path: python,
+  });
+
+  if (!needsInstall) {
+    return venvPython;
+  }
+
+  appendLog(paths.bootstrapLogPath, `\n[${new Date().toISOString()}] Preparing EleMate API runtime\n`);
+  await runCommand(python, ["-m", "venv", paths.venvDir], paths.root, "local runtime bootstrap", {
+    env: { ...process.env },
+    logFile: paths.bootstrapLogPath,
+  });
+
+  await runCommand(venvPython, ["-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"], paths.root, "python tooling install", {
+    env: { ...process.env },
+    logFile: paths.bootstrapLogPath,
+  });
+
+  await runCommand(venvPython, ["-m", "pip", "install", paths.apiDir], paths.root, "EleMate API install", {
+    env: { ...process.env },
+    logFile: paths.bootstrapLogPath,
+  });
+
+  writeJsonFile(paths.bootstrapPath, {
+    app_version: desiredVersion,
+    python_path: python,
+    installed_at: new Date().toISOString(),
+  });
+
+  const installed = readJsonFile(paths.bootstrapPath);
+  setRuntimeSection("api", {
+    python_path: python,
+    last_installed_at: installed?.installed_at || null,
+  });
+  return venvPython;
+}
+
+function spawnBundledApiServer() {
+  const paths = ensurePackagedDirectories();
+  const python = getBundledApiPython(paths);
+  if (!fs.existsSync(python)) {
+    throw new Error("로컬 엔진이 아직 준비되지 않았습니다. 먼저 런타임 설치를 완료하세요.");
+  }
+  return spawn(python, ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"], {
+    cwd: paths.apiDir,
+    stdio: "inherit",
+    env: packagedApiEnvironment(paths),
+  });
+}
+
+async function ensureBundledApiService(options = {}) {
+  const { forceInstall = false } = options;
+  if (await isHealthy(`${API_URL}/health`)) {
+    setRuntimeSection("api", { status: "ready", message: "로컬 엔진이 준비되었습니다." });
+    return null;
+  }
+  if (startingApiPromise) {
+    return startingApiPromise;
+  }
+
+  startingApiPromise = (async () => {
+    try {
+      await installBundledApiRuntime(forceInstall);
+      setRuntimeSection("api", { status: "starting", message: "로컬 엔진을 시작하고 있습니다." });
+      apiProcess = await ensureService(`${API_URL}/health`, spawnBundledApiServer, "API server");
+      setRuntimeSection("api", { status: "ready", message: "로컬 엔진이 준비되었습니다." });
+      return apiProcess;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (runtimeState.api.status !== "needs-python") {
+        setRuntimeSection("api", { status: "error", message });
+      }
+      throw error;
+    } finally {
+      startingApiPromise = null;
+    }
+  })();
+
+  return startingApiPromise;
+}
+
 async function ensureWebBuild() {
   if (!WEB_DIR) {
     return;
-  }
-  if (!findExecutable("npm")) {
-    throw new Error(
-      "EleMate 화면을 준비하려면 먼저 앱 설치 도구가 필요합니다.\n\nNode.js를 설치한 뒤 다시 시도하세요.\n" + NODE_DOWNLOAD_URL,
-    );
   }
   const buildIdPath = path.join(WEB_DIR, ".next", "BUILD_ID");
   if (fs.existsSync(buildIdPath)) {
     return;
   }
-  await runCommand("npm", ["run", "build"], WEB_DIR, "web build");
+  throw new Error("EleMate 웹 번들이 없습니다. 개발 환경에서는 먼저 `npm run build:web` 를 실행하세요.");
 }
 
 function spawnWebServer() {
   if (!WEB_DIR) {
     throw new Error("Web workspace is unavailable in packaged mode. Set ELEMATE_REPO_ROOT or start the web app separately.");
   }
-  if (!findExecutable("npm")) {
-    throw new Error(
-      "EleMate 화면을 열려면 먼저 앱 설치 도구가 필요합니다.\n\nNode.js를 설치한 뒤 다시 시도하세요.\n" + NODE_DOWNLOAD_URL,
-    );
+  const standaloneServer = path.join(WEB_DIR, ".next", "standalone", "apps", "web", "server.js");
+  if (!fs.existsSync(standaloneServer)) {
+    throw new Error("EleMate 웹 번들이 없습니다. 개발 환경에서는 먼저 `npm run build:web` 를 실행하세요.");
   }
-  return spawn("npm", ["run", "start", "--", "--hostname", "127.0.0.1", "--port", "3000"], {
-    cwd: WEB_DIR,
+
+  return spawn(process.execPath, [standaloneServer], {
+    cwd: path.join(WEB_DIR, ".next", "standalone", "apps", "web"),
     stdio: "inherit",
-    env: { ...process.env },
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      HOSTNAME: "127.0.0.1",
+      PORT: "3000",
+      NODE_ENV: "production",
+      NEXT_TELEMETRY_DISABLED: "1",
+    },
   });
 }
 
-function runCommand(command, args, cwd, label) {
+function spawnBundledWebServer() {
+  const paths = ensurePackagedDirectories();
+  if (!paths.webServerScript || !fs.existsSync(paths.webServerScript)) {
+    throw new Error("패키지 안에 EleMate 웹 번들이 없습니다. 최신 설치 파일로 다시 설치하세요.");
+  }
+
+  return spawn(process.execPath, [paths.webServerScript], {
+    cwd: paths.webCwd,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      HOSTNAME: "127.0.0.1",
+      PORT: "3000",
+      NODE_ENV: "production",
+      NEXT_TELEMETRY_DISABLED: "1",
+      ELEMATE_PUBLIC_SITE_MODE: "",
+    },
+  });
+}
+
+async function ensureBundledWebService() {
+  setRuntimeSection("web", { status: "starting", message: "로컬 화면을 시작하고 있습니다." });
+  try {
+    webProcess = await ensureService(WEB_URL, spawnBundledWebServer, "web server");
+    setRuntimeSection("web", { status: "ready", message: "로컬 화면이 준비되었습니다." });
+    return webProcess;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setRuntimeSection("web", { status: "error", message });
+    throw error;
+  }
+}
+
+function runCommand(command, args, cwd, label, options = {}) {
   return new Promise((resolve, reject) => {
+    const env = options.env ? { ...process.env, ...options.env } : { ...process.env };
+    const stdio = options.stdio || (options.logFile ? "pipe" : "inherit");
     const child = spawn(command, args, {
       cwd,
-      stdio: "inherit",
-      env: { ...process.env },
+      stdio,
+      env,
     });
+
+    if (options.logFile && child.stdout && child.stderr) {
+      child.stdout.on("data", (chunk) => appendLog(options.logFile, String(chunk)));
+      child.stderr.on("data", (chunk) => appendLog(options.logFile, String(chunk)));
+    }
+
     child.once("error", (error) => {
       reject(mapSpawnError(command, label, error));
     });
@@ -149,11 +451,8 @@ function findExecutable(command) {
 
 function mapSpawnError(command, label, error) {
   if (error && error.code === "ENOENT") {
-    if (command === "npm") {
-      return new Error(`EleMate ${label}를 계속하려면 Node.js가 필요합니다.\n\n설치 페이지:\n${NODE_DOWNLOAD_URL}`);
-    }
     if (command === "python3" || command.endsWith("/python")) {
-      return new Error(`EleMate ${label}를 계속하려면 Python 3가 필요합니다.\n\n설치 페이지:\n${PYTHON_DOWNLOAD_URL}`);
+      return new Error(`EleMate ${label}를 계속하려면 Python 3.11 이상이 필요합니다.\n\n설치 페이지:\n${PYTHON_DOWNLOAD_URL}`);
     }
   }
   return error;
@@ -192,6 +491,7 @@ function getPermissionStatus(kind) {
 }
 
 function getDesktopStatus() {
+  refreshRuntimePaths();
   return {
     is_desktop_app: true,
     platform: process.platform,
@@ -203,6 +503,7 @@ function getDesktopStatus() {
       camera: getPermissionStatus("camera"),
     },
     daemon: getDaemonStatus(),
+    runtime: runtimeState,
   };
 }
 
@@ -232,7 +533,7 @@ function getDaemonStatus() {
       plist_path: null,
       stdout_path: null,
       stderr_path: null,
-      summary: "macOS 데스크탑 앱에서만 항상 켜짐 모드를 설정할 수 있습니다.",
+      summary: "앱을 계속 켜 두면 이 장비는 바로 사용할 수 있습니다. 항상 켜짐 자동 시작은 개발자 설치 모드에서만 지원합니다.",
     };
   }
 
@@ -296,6 +597,29 @@ function normalizeTerminalCommand(command) {
 
 function registerIpcHandlers() {
   ipcMain.handle("desktop:get-status", async () => getDesktopStatus());
+
+  ipcMain.handle("desktop:install-local-runtime", async () => {
+    await ensureBundledApiService({ forceInstall: true });
+    return getDesktopStatus();
+  });
+
+  ipcMain.handle("desktop:restart-local-services", async () => {
+    stopChild(apiProcess);
+    stopChild(webProcess);
+    apiProcess = null;
+    webProcess = null;
+
+    if (app.isPackaged) {
+      await ensureBundledWebService();
+      await ensureBundledApiService({ forceInstall: false });
+    } else if (REPO_ROOT && WEB_DIR && API_DIR) {
+      apiProcess = await ensureService(`${API_URL}/health`, spawnApiServer, "API server");
+      await ensureWebBuild();
+      webProcess = await ensureService(WEB_URL, spawnWebServer, "web server");
+    }
+
+    return getDesktopStatus();
+  });
 
   ipcMain.handle("desktop:choose-directory", async () => {
     if (!mainWindow) {
@@ -386,22 +710,44 @@ function registerIpcHandlers() {
   });
 }
 
+async function startSourceApp() {
+  apiProcess = await ensureService(`${API_URL}/health`, spawnApiServer, "API server");
+  setRuntimeSection("api", { status: "ready", message: "소스 API 런타임이 준비되었습니다.", python_path: getPythonCommand() });
+  await ensureWebBuild();
+  webProcess = await ensureService(WEB_URL, spawnWebServer, "web server");
+  setRuntimeSection("web", { status: "ready", message: "소스 웹 런타임이 준비되었습니다." });
+  createWindow();
+}
+
+async function startPackagedApp() {
+  refreshRuntimePaths();
+  await ensureBundledWebService();
+  createWindow();
+  void ensureBundledApiService({ forceInstall: false }).catch(() => {});
+}
+
 async function startApp() {
   registerIpcHandlers();
 
-  if (REPO_ROOT && WEB_DIR && API_DIR) {
-    apiProcess = await ensureService(`${API_URL}/health`, spawnApiServer, "API server");
-    await ensureWebBuild();
-    webProcess = await ensureService(WEB_URL, spawnWebServer, "web server");
-  } else {
-    const [apiHealthy, webHealthy] = await Promise.all([isHealthy(`${API_URL}/health`), isHealthy(WEB_URL)]);
-    if (!apiHealthy || !webHealthy) {
-      throw new Error(
-        "Packaged desktop shell could not find a source workspace. Set ELEMATE_REPO_ROOT to your repo path or start the local API/Web services first.",
-      );
-    }
+  if (app.isPackaged) {
+    await startPackagedApp();
+    return;
   }
 
+  if (REPO_ROOT && WEB_DIR && API_DIR) {
+    await startSourceApp();
+    return;
+  }
+
+  const [apiHealthy, webHealthy] = await Promise.all([isHealthy(`${API_URL}/health`), isHealthy(WEB_URL)]);
+  if (!apiHealthy || !webHealthy) {
+    throw new Error(
+      "Packaged desktop shell could not find a source workspace. Set ELEMATE_REPO_ROOT to your repo path or start the local API/Web services first.",
+    );
+  }
+
+  setRuntimeSection("api", { status: "ready", message: "외부 API 런타임에 연결되었습니다." });
+  setRuntimeSection("web", { status: "ready", message: "외부 웹 런타임에 연결되었습니다." });
   createWindow();
 }
 

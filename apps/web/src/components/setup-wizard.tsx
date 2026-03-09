@@ -19,6 +19,8 @@ interface SetupWizardProps {
   onOpenRemoteAccessApp: () => void;
   onEnableRemoteAccess: () => void;
   onInstallBackgroundAgent: () => void;
+  onInstallLocalRuntime: () => void;
+  onRestartLocalServices: () => void;
 }
 
 function statusLabel(done: boolean, pendingLabel = "다음 단계"): string {
@@ -43,6 +45,8 @@ export function SetupWizard({
   onOpenRemoteAccessApp,
   onEnableRemoteAccess,
   onInstallBackgroundAgent,
+  onInstallLocalRuntime,
+  onRestartLocalServices,
 }: SetupWizardProps) {
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
 
@@ -51,8 +55,14 @@ export function SetupWizard({
   const readyCount = [onboarding?.auth_ready, Boolean(selectedWorkspace), Boolean(tailscaleStatus?.serve_enabled)].filter(Boolean).length;
   const optionalAlwaysOn = Boolean(desktopStatus?.daemon.loaded);
   const remoteReady = Boolean(tailscaleStatus?.serve_enabled);
+  const bundledRuntime = desktopStatus?.runtime?.mode === "bundled" ? desktopStatus.runtime : null;
+  const runtimeReady = !bundledRuntime || bundledRuntime.api.status === "ready";
+  const runtimeBusy = bundledRuntime ? bundledRuntime.api.status === "installing" || bundledRuntime.api.status === "starting" : false;
 
   const heroText = useMemo(() => {
+    if (!runtimeReady) {
+      return "먼저 이 장비 안에 EleMate 로컬 엔진을 준비합니다.";
+    }
     if (!onboarding?.auth_ready) {
       return "먼저 AI 연결만 끝내면 됩니다.";
     }
@@ -63,7 +73,7 @@ export function SetupWizard({
       return "마지막으로 휴대폰 접속만 켜면 설정이 끝납니다.";
     }
     return "준비가 끝났습니다. 이제 휴대폰에서 바로 말을 걸면 됩니다.";
-  }, [onboarding?.auth_ready, remoteReady, selectedWorkspace]);
+  }, [onboarding?.auth_ready, remoteReady, runtimeReady, selectedWorkspace]);
 
   async function copyValue(value: string | null | undefined, message: string) {
     if (!value) {
@@ -105,6 +115,45 @@ export function SetupWizard({
           <ElephantMascot className="w-full" caption="내 장비를 내 개인 에이전트로 설정합니다." />
         </div>
       </div>
+
+      {!runtimeReady ? (
+        <article className="ui-card mt-8">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="eyebrow">Local Engine</p>
+              <p className="ui-title-card mt-3">
+                {runtimeBusy ? "로컬 엔진을 준비하고 있습니다." : "앱 안에 로컬 엔진을 먼저 준비합니다."}
+              </p>
+              <p className="ui-copy-sm mt-3">
+                {bundledRuntime?.api.message ||
+                  "처음 한 번만 준비하면 이후에는 앱을 열 때 자동으로 엔진이 함께 시작됩니다."}
+              </p>
+              {bundledRuntime?.data_dir ? <p className="ui-copy-sm mt-2 break-all text-white/52">데이터 위치: {bundledRuntime.data_dir}</p> : null}
+            </div>
+            <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(runtimeReady)}`}>
+              {runtimeBusy ? "준비 중" : bundledRuntime?.api.status === "needs-python" ? "Python 필요" : "준비 필요"}
+            </span>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onInstallLocalRuntime}
+              disabled={isBusy || runtimeBusy}
+              className="ui-button-primary px-4 py-2.5 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {bundledRuntime?.api.status === "needs-python" ? "앱 준비 다시 시도" : "앱 준비 시작"}
+            </button>
+            <button
+              type="button"
+              onClick={onRestartLocalServices}
+              disabled={isBusy || runtimeBusy}
+              className="ui-button-secondary px-4 py-2.5 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              로컬 서비스 다시 시작
+            </button>
+          </div>
+        </article>
+      ) : null}
 
       <div className="mt-8 grid gap-4 xl:grid-cols-3">
         <article className="ui-card">

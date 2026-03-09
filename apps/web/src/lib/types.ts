@@ -370,6 +370,7 @@ export interface DesktopBridgeStatus {
   platform: string;
   permissions: DesktopPermissionStatus;
   daemon: DesktopDaemonStatus;
+  runtime: DesktopRuntimeStatus;
 }
 
 export interface DesktopDaemonStatus {
@@ -381,6 +382,25 @@ export interface DesktopDaemonStatus {
   stdout_path: string | null;
   stderr_path: string | null;
   summary: string;
+}
+
+export interface DesktopRuntimeProcessStatus {
+  status: "idle" | "starting" | "installing" | "ready" | "needs-python" | "error" | "external";
+  message: string | null;
+  url: string;
+  bundled: boolean;
+  python_path?: string | null;
+  install_url?: string | null;
+  last_installed_at?: string | null;
+}
+
+export interface DesktopRuntimeStatus {
+  mode: "bundled" | "source" | "external";
+  support_dir: string | null;
+  data_dir: string | null;
+  logs_dir: string | null;
+  web: DesktopRuntimeProcessStatus;
+  api: DesktopRuntimeProcessStatus;
 }
 
 export interface Portal {

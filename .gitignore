@@ -29,6 +29,7 @@ venv/
 dist/
 build/
 coverage/
+apps/desktop/runtime/
 
 # Runtime
 apps/api/data/*.db

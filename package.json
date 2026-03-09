@@ -1,7 +1,7 @@
 {
   "name": "elemate-monorepo",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "workspaces": [
     "apps/desktop",
     "apps/web",
@@ -10,6 +10,7 @@
   "scripts": {
     "dev:web": "npm --workspace apps/web run dev",
     "build:web": "npm --workspace apps/web run build",
+    "prepare:desktop-runtime": "node scripts/prepare_elemate_desktop_runtime.mjs",
     "lint:web": "npm --workspace apps/web run lint",
     "setup:desktop": "./scripts/setup_elemate_desktop.sh",
     "setup:public-site": "./scripts/setup_elemate_public_site.sh",
@@ -23,9 +24,9 @@
     "run:desktop": "./scripts/run_elemate_desktop.sh",
     "run:public-site": "./scripts/run_elemate_public_site.sh",
     "start:desktop": "npm --workspace apps/desktop run start",
-    "pack:desktop": "npm --workspace apps/desktop run pack",
-    "dist:desktop": "npm --workspace apps/desktop run dist",
-    "dist:desktop:arm64": "npm --workspace apps/desktop run dist:mac:arm64",
-    "dist:desktop:x64": "npm --workspace apps/desktop run dist:mac:x64"
+    "pack:desktop": "npm run build:web && npm run prepare:desktop-runtime && npm --workspace apps/desktop run pack",
+    "dist:desktop": "npm run build:web && npm run prepare:desktop-runtime && npm --workspace apps/desktop run dist",
+    "dist:desktop:arm64": "npm run build:web && npm run prepare:desktop-runtime && npm --workspace apps/desktop run dist:mac:arm64",
+    "dist:desktop:x64": "npm run build:web && npm run prepare:desktop-runtime && npm --workspace apps/desktop run dist:mac:x64"
   }
 }

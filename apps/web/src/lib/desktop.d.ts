@@ -4,6 +4,8 @@ declare global {
   interface Window {
     elemateDesktop?: {
       getStatus: () => Promise<DesktopBridgeStatus>;
+      installLocalRuntime: () => Promise<DesktopBridgeStatus>;
+      restartLocalServices: () => Promise<DesktopBridgeStatus>;
       chooseDirectory: () => Promise<string | null>;
       promptAccessibility: () => Promise<boolean>;
       openSystemPreferences: (pane: "accessibility" | "screen") => Promise<boolean>;
@@ -16,6 +18,8 @@ declare global {
     };
     forgeDesktop?: {
       getStatus: () => Promise<DesktopBridgeStatus>;
+      installLocalRuntime: () => Promise<DesktopBridgeStatus>;
+      restartLocalServices: () => Promise<DesktopBridgeStatus>;
       chooseDirectory: () => Promise<string | null>;
       promptAccessibility: () => Promise<boolean>;
       openSystemPreferences: (pane: "accessibility" | "screen") => Promise<boolean>;

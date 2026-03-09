@@ -9,13 +9,14 @@ from pathlib import Path
 from fastapi import HTTPException, status
 
 from ..schemas import TailscaleServeApplyResultOut, TailscaleStatusOut
+from ..settings import SCRIPTS_DIR
 
 TAILSCALE_HEADERS = [
     "Tailscale-User-Login",
     "Tailscale-User-Name",
     "Tailscale-User-Profile-Pic",
 ]
-TAILSCALE_SCRIPT_PATH = Path(__file__).resolve().parents[4] / "scripts" / "setup_tailscale_serve.sh"
+TAILSCALE_SCRIPT_PATH = SCRIPTS_DIR / "setup_tailscale_serve.sh"
 
 
 def get_tailscale_status() -> TailscaleStatusOut:

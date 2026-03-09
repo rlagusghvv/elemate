@@ -28,7 +28,7 @@ const trustPoints = [
 
 const installSteps = [
   "Mac용 EleMate를 다운로드합니다.",
-  "앱을 열면 로컬 화면과 엔진 준비가 자동으로 시작됩니다.",
+  "앱을 열면 로컬 화면과 엔진이 바로 함께 시작됩니다.",
   "AI 연결, 폴더 선택, 휴대폰 연결을 끝냅니다.",
   "그 다음부터는 휴대폰 링크에서 바로 말을 겁니다.",
 ];
@@ -65,13 +65,15 @@ export function LandingPage() {
             <div className="mt-4 flex flex-wrap gap-2">
               <span className="ui-chip">{BRAND_MIN_OS}</span>
               <span className="ui-chip">내장 로컬 화면 포함</span>
+              <span className="ui-chip">내장 로컬 엔진 포함</span>
               <span className="ui-chip">개인 장비 전용</span>
             </div>
             <p className="ui-copy-sm mt-4">
               공개 랜딩은 제품 소개와 다운로드용입니다. 실제 콘솔은 설치된 컴퓨터 안에서만 열리고, 휴대폰은 개인 링크로 접속합니다.
             </p>
             <p className="ui-copy-sm mt-3">
-              첫 실행에서는 EleMate가 이 장비에 로컬 엔진을 준비합니다. 필요한 게 없으면 설치 페이지를 열고, 준비가 끝나면 다음부터는 자동으로 붙습니다.
+              공식 설치본에는 로컬 엔진이 같이 들어 있습니다. 빠진 게 있다면 ChatGPT 연결 도구나 원격 연결 앱 정도이고, EleMate가 그 설치나 로그인
+              페이지를 바로 열어줍니다.
             </p>
             <div className="mt-6">
               <Link href="/app" className="ui-button-tertiary">

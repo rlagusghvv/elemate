@@ -33,8 +33,24 @@ jobs:
       - name: Build web
         run: npm run build:web
 
+      - name: Configure macOS code signing
+        if: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_CERT_PASSWORD != '' }}
+        shell: bash
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/elemate-signing.p12"
+          echo "$MACOS_CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          echo "CSC_LINK=file://$CERT_PATH" >> "$GITHUB_ENV"
+          echo "CSC_KEY_PASSWORD=$MACOS_CERT_PASSWORD" >> "$GITHUB_ENV"
+
       - name: Build desktop artifacts
         run: npm run dist:desktop:${{ matrix.arch }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4

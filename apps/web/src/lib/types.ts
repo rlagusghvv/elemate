@@ -392,6 +392,8 @@ export interface DesktopRuntimeProcessStatus {
   python_path?: string | null;
   install_url?: string | null;
   last_installed_at?: string | null;
+  bundled_python_available?: boolean;
+  bundled_python_version?: string | null;
 }
 
 export interface DesktopRuntimeStatus {

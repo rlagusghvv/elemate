@@ -1,7 +1,7 @@
 {
   "name": "elemate-monorepo",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "workspaces": [
     "apps/desktop",
     "apps/web",
@@ -11,6 +11,9 @@
     "dev:web": "npm --workspace apps/web run dev",
     "build:web": "npm --workspace apps/web run build",
     "prepare:desktop-runtime": "node scripts/prepare_elemate_desktop_runtime.mjs",
+    "prepare:desktop-python": "node scripts/fetch_elemate_python_runtime.mjs",
+    "prepare:desktop-python:arm64": "node scripts/fetch_elemate_python_runtime.mjs arm64",
+    "prepare:desktop-python:x64": "node scripts/fetch_elemate_python_runtime.mjs x64",
     "lint:web": "npm --workspace apps/web run lint",
     "setup:desktop": "./scripts/setup_elemate_desktop.sh",
     "setup:public-site": "./scripts/setup_elemate_public_site.sh",
@@ -24,9 +27,9 @@
     "run:desktop": "./scripts/run_elemate_desktop.sh",
     "run:public-site": "./scripts/run_elemate_public_site.sh",
     "start:desktop": "npm --workspace apps/desktop run start",
-    "pack:desktop": "npm run build:web && npm run prepare:desktop-runtime && npm --workspace apps/desktop run pack",
-    "dist:desktop": "npm run build:web && npm run prepare:desktop-runtime && npm --workspace apps/desktop run dist",
-    "dist:desktop:arm64": "npm run build:web && npm run prepare:desktop-runtime && npm --workspace apps/desktop run dist:mac:arm64",
-    "dist:desktop:x64": "npm run build:web && npm run prepare:desktop-runtime && npm --workspace apps/desktop run dist:mac:x64"
+    "pack:desktop": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python && npm --workspace apps/desktop run pack",
+    "dist:desktop": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python && npm --workspace apps/desktop run dist",
+    "dist:desktop:arm64": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python:arm64 && npm --workspace apps/desktop run dist:mac:arm64",
+    "dist:desktop:x64": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python:x64 && npm --workspace apps/desktop run dist:mac:x64"
   }
 }

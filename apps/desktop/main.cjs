@@ -18,6 +18,7 @@ const REPO_ROOT = app.isPackaged ? (repoRootEnv ? SOURCE_REPO_ROOT : null) : SOU
 const PACKAGED_RUNTIME_ROOT = app.isPackaged ? path.join(process.resourcesPath, "runtime") : null;
 const PACKAGED_WEB_ROOT = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "web") : null;
 const PACKAGED_API_DIR = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "api") : null;
+const PACKAGED_PYTHON_DIR = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "python") : null;
 const PACKAGED_SCRIPTS_DIR = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "scripts") : null;
 const WEB_DIR = REPO_ROOT ? path.join(REPO_ROOT, "apps", "web") : null;
 const API_DIR = REPO_ROOT ? path.join(REPO_ROOT, "apps", "api") : null;
@@ -51,6 +52,8 @@ let runtimeState = {
     python_path: null,
     install_url: PYTHON_DOWNLOAD_URL,
     last_installed_at: null,
+    bundled_python_available: Boolean(PACKAGED_PYTHON_DIR),
+    bundled_python_version: null,
   },
 };
 
@@ -67,6 +70,8 @@ function getPackagedPaths() {
     webServerScript: PACKAGED_WEB_ROOT ? path.join(PACKAGED_WEB_ROOT, "apps", "web", "server.js") : null,
     webCwd: PACKAGED_WEB_ROOT ? path.join(PACKAGED_WEB_ROOT, "apps", "web") : null,
     apiDir: PACKAGED_API_DIR,
+    pythonDir: PACKAGED_PYTHON_DIR,
+    pythonManifestPath: PACKAGED_PYTHON_DIR ? path.join(PACKAGED_PYTHON_DIR, ".elemate-python-runtime.json") : null,
     scriptsDir: PACKAGED_SCRIPTS_DIR,
   };
 }
@@ -77,6 +82,8 @@ function refreshRuntimePaths() {
   }
   const paths = getPackagedPaths();
   const bootstrap = readJsonFile(paths.bootstrapPath);
+  const bundledPython = getPackagedPythonCommand(paths);
+  const bundledPythonManifest = readJsonFile(paths.pythonManifestPath);
   runtimeState = {
     ...runtimeState,
     support_dir: paths.root,
@@ -84,8 +91,10 @@ function refreshRuntimePaths() {
     logs_dir: paths.logsDir,
     api: {
       ...runtimeState.api,
-      python_path: bootstrap?.python_path || runtimeState.api.python_path,
+      python_path: bootstrap?.python_path || bundledPython || runtimeState.api.python_path,
       last_installed_at: bootstrap?.installed_at || runtimeState.api.last_installed_at,
+      bundled_python_available: Boolean(bundledPython),
+      bundled_python_version: bundledPythonManifest?.python_version || null,
     },
   };
 }
@@ -226,14 +235,49 @@ function packagedApiEnvironment(paths) {
   };
 }
 
-function getBundledApiPython(paths) {
+function getPackagedPythonCommand(paths) {
+  if (!paths.pythonDir) {
+    return null;
+  }
+  const candidates = [
+    path.join(paths.pythonDir, "bin", "python3.11"),
+    path.join(paths.pythonDir, "bin", "python3"),
+    path.join(paths.pythonDir, "bin", "python"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function getFallbackBundledApiPython(paths) {
   return path.join(paths.venvDir, "bin", "python");
+}
+
+function getBundledApiPython(paths) {
+  return getPackagedPythonCommand(paths) || getFallbackBundledApiPython(paths);
 }
 
 async function installBundledApiRuntime(forceInstall = false) {
   const paths = ensurePackagedDirectories();
   if (!paths.apiDir || !fs.existsSync(path.join(paths.apiDir, "pyproject.toml"))) {
     throw new Error("패키지 안에 API 런타임이 들어 있지 않습니다. 최신 EleMate 설치 파일로 다시 설치하세요.");
+  }
+
+  const bundledPython = getPackagedPythonCommand(paths);
+  const bundledPythonManifest = readJsonFile(paths.pythonManifestPath);
+  if (bundledPython) {
+    setRuntimeSection("api", {
+      status: "starting",
+      message: "앱 안에 포함된 로컬 엔진을 시작하고 있습니다.",
+      python_path: bundledPython,
+      last_installed_at: bundledPythonManifest?.generated_at || runtimeState.api.last_installed_at,
+      bundled_python_available: true,
+      bundled_python_version: bundledPythonManifest?.python_version || runtimeState.api.bundled_python_version,
+    });
+    return bundledPython;
   }
 
   const python = getSystemPythonCommand();
@@ -248,7 +292,7 @@ async function installBundledApiRuntime(forceInstall = false) {
   }
 
   const previous = readJsonFile(paths.bootstrapPath);
-  const venvPython = getBundledApiPython(paths);
+  const venvPython = getFallbackBundledApiPython(paths);
   const desiredVersion = app.getVersion();
   const needsInstall =
     forceInstall ||

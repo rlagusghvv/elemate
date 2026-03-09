@@ -19,7 +19,7 @@ from .settings import ARTIFACTS_DIR
 
 app = FastAPI(
     title="EleMate API",
-    version="0.2.0",
+    version="0.3.0",
     description="EleMate 개인 장비형 에이전트 API",
 )
 

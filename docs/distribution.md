@@ -33,9 +33,25 @@ Electron은 웹 기술로 데스크탑 앱 창을 만드는 도구입니다.
 동작:
 
 1. `v*` 태그 push 또는 수동 실행
-2. macOS GitHub Actions runner에서 DMG/ZIP 빌드
-3. 아티팩트 업로드
-4. 태그 릴리스면 GitHub Release 첨부
+2. macOS GitHub Actions runner에서 아키텍처별 Python 런타임을 내려받고 EleMate API까지 미리 설치
+3. DMG/ZIP 빌드
+4. 선택적으로 code signing + notarization
+5. 아티팩트 업로드
+6. 태그 릴리스면 GitHub Release 첨부
+
+즉 공식 설치본은 `웹 화면 + 로컬 API 엔진 + Python 런타임`을 같이 담는 구조입니다.
+
+## code signing / notarization
+
+아래 GitHub secrets가 있으면 릴리스 워크플로우가 자동으로 서명/노타리제이션을 시도합니다.
+
+- `MACOS_CERT_P12_BASE64`
+- `MACOS_CERT_PASSWORD`
+- `APPLE_ID`
+- `APPLE_APP_SPECIFIC_PASSWORD`
+- `APPLE_TEAM_ID`
+
+없으면 unsigned 빌드로 계속 통과합니다.
 
 ## 랜딩에서 필요한 환경 변수
 
@@ -54,11 +70,11 @@ Electron은 웹 기술로 데스크탑 앱 창을 만드는 도구입니다.
 
 ## 아직 남은 것
 
-현재 데스크탑 앱은 `로컬 런타임과 함께 쓰는 구조`가 이미 강하게 잡혀 있지만, 완전한 소비자용 배포로 가려면 아래가 추가로 필요합니다.
+현재 데스크탑 앱은 공식 설치본 기준으로 `로컬 화면 + 로컬 엔진`을 같이 배포합니다. 그래도 소비자용 최종 배포 품질까지 가려면 아래가 추가로 남습니다.
 
-1. Apple code signing
-2. notarization
+1. 실제 Apple signing secret 연결
+2. 실제 notarization 성공 검증
 3. 첫 실행 자동 업데이트
-4. 로컬 런타임 번들링 정리
+4. Codex / Tailscale 연결 UX 추가 단순화
 
-즉 지금 워크플로우는 `배포 골격`까지는 마련한 상태이고, 소비자용 최종 배포 품질까지는 아직 추가 작업이 필요합니다.
+즉 지금 워크플로우는 `공식 설치본 배포` 단계까지 올라왔고, 마지막 남은 건 신뢰성과 애플 배포 품질 쪽입니다.

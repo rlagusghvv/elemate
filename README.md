@@ -38,6 +38,8 @@
 2. `EleMate.app` 설치
 3. 앱 안에서 `AI 연결`, `내 폴더`, `휴대폰 연결`
 
+공식 설치본 기준으로는 앱 안에 로컬 화면과 로컬 엔진이 함께 들어 있습니다. 사용자가 따로 Python을 설치해야 하는 구조를 기본 경로로 두지 않습니다.
+
 배포 구조는 [distribution.md](/Users/kimhyeonho/Documents/Playground/docs/distribution.md)에 정리했습니다.
 
 ### 2. 현재 저장소 기준 개발용 실행
@@ -188,7 +190,7 @@ ELEMATE_PUBLIC_PORT=4010 ./scripts/install_elemate_public_site_launch_agent.sh
 - 기본 DB는 SQLite: `apps/api/data/elemate.db`
 - 아티팩트는 `/artifacts/<task_id>/` 아래 저장
 - 로그는 `logs/<task_id>.jsonl`에 저장
-- 패키징된 데스크탑 앱은 아직 완전 독립형이 아니며, 로컬 Python/API 런타임이 필요합니다
+- 공식 패키징된 데스크탑 앱은 번들된 Python/API 런타임을 포함합니다
 - 현재 브라우저/데스크탑 제어는 브라우저 세션 중심이며 OS 전역 자동화는 아직 확장 중입니다
 
 ## 외부 배포 상태
@@ -197,7 +199,6 @@ ELEMATE_PUBLIC_PORT=4010 ./scripts/install_elemate_public_site_launch_agent.sh
 
 외부 사용자가 랜딩 페이지에서 곧바로 설치하게 하려면 다음 작업이 추가로 필요합니다.
 
-1. 공개 다운로드 주소
-2. 서명된 설치 파일 또는 호스팅된 설치 스크립트
-3. 업데이트 경로
-4. 첫 실행 마법사
+1. 서명/노타리제이션을 위한 실제 Apple 배포 secret 연결
+2. 자동 업데이트 경로
+3. Codex / Tailscale 연결 UX 추가 단순화

@@ -30,6 +30,8 @@ dist/
 build/
 coverage/
 apps/desktop/runtime/
+!apps/desktop/build/
+!apps/desktop/build/**
 
 # Runtime
 apps/api/data/*.db
@@ -39,3 +41,4 @@ artifacts/*
 !logs/.gitkeep
 tmp/
 tools/
+.cache/

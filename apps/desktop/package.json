@@ -1,7 +1,7 @@
 {
   "name": "elemate-desktop",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "EleMate Electron desktop shell",
   "author": "EleMate",
   "main": "main.cjs",
@@ -13,6 +13,7 @@
     "dist:mac:x64": "electron-builder --publish never --mac dmg zip --x64"
   },
   "devDependencies": {
+    "@electron/notarize": "^2.5.0",
     "electron": "37.3.1",
     "electron-builder": "26.8.1"
   },
@@ -25,6 +26,7 @@
     "directories": {
       "output": "dist"
     },
+    "afterSign": "build/notarize.cjs",
     "artifactName": "EleMate-${arch}.${ext}",
     "files": [
       "main.cjs",
@@ -44,7 +46,11 @@
         "dmg",
         "zip"
       ],
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     }
   }
 }

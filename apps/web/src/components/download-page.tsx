@@ -27,7 +27,7 @@ const downloadCards = [
 
 const steps = [
   "다운로드한 EleMate 앱을 Applications 폴더로 옮깁니다.",
-  "앱을 열면 내장 화면이 바로 뜨고, 로컬 엔진 준비가 자동으로 시작됩니다.",
+  "앱을 열면 내장 화면과 로컬 엔진이 바로 함께 시작됩니다.",
   "그 다음 AI 연결, 내 폴더, 휴대폰 연결을 순서대로 끝냅니다.",
   "휴대폰 링크를 저장해 두고 앞으로는 거기서 주로 대화합니다.",
 ];
@@ -51,10 +51,12 @@ export function DownloadPage() {
             <div className="mt-6 flex flex-wrap gap-2">
               <span className="ui-chip">{BRAND_MIN_OS}</span>
               <span className="ui-chip">앱 안에 로컬 화면 포함</span>
+              <span className="ui-chip">앱 안에 로컬 엔진 포함</span>
               <span className="ui-chip">내 장비에서 실행</span>
             </div>
             <p className="ui-copy-sm mt-4 max-w-2xl">
-              처음 실행 시 EleMate가 이 장비에 로컬 엔진을 준비합니다. Python이 없으면 설치 페이지를 열고, 준비가 끝나면 이후에는 자동으로 다시 붙습니다.
+              공식 설치본에는 로컬 엔진이 함께 들어 있습니다. 부족한 건 ChatGPT 연결과 원격 연결 앱뿐이라서, 필요하면 EleMate가 해당 설치나 로그인
+              페이지를 바로 엽니다.
             </p>
           </div>
 

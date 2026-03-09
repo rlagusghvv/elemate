@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 
 import { ElephantMascot } from "@/components/elephant-mascot";
 import type { DesktopBridgeStatus, OnboardingStatus, Portal, TailscaleStatus } from "@/lib/types";
@@ -49,6 +50,7 @@ export function SetupWizard({
   onRestartLocalServices,
 }: SetupWizardProps) {
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
   const selectedWorkspace = workspacePath || onboarding?.workspace_path || "";
   const linkValue = portal?.portal_url || tailscaleStatus?.serve_url || null;
@@ -58,6 +60,37 @@ export function SetupWizard({
   const bundledRuntime = desktopStatus?.runtime?.mode === "bundled" ? desktopStatus.runtime : null;
   const runtimeReady = !bundledRuntime || bundledRuntime.api.status === "ready";
   const runtimeBusy = bundledRuntime ? bundledRuntime.api.status === "installing" || bundledRuntime.api.status === "starting" : false;
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!linkValue || !remoteReady) {
+      setQrDataUrl(null);
+      return () => {
+        isMounted = false;
+      };
+    }
+    void QRCode.toDataURL(linkValue, {
+      margin: 0,
+      width: 220,
+      color: {
+        dark: "#F5F7FB",
+        light: "#00000000",
+      },
+    })
+      .then((value) => {
+        if (isMounted) {
+          setQrDataUrl(value);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setQrDataUrl(null);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [linkValue, remoteReady]);
 
   const heroText = useMemo(() => {
     if (!runtimeReady) {
@@ -174,7 +207,10 @@ export function SetupWizard({
           {!onboarding?.auth_ready ? (
             <div className="mt-5 flex flex-wrap gap-2">
               <button type="button" onClick={onOpenChatLogin} className="ui-button-primary px-4 py-2.5">
-                AI 연결 시작
+                ChatGPT 연결 열기
+              </button>
+              <button type="button" onClick={onRefresh} className="ui-button-secondary px-4 py-2.5">
+                로그인 후 다시 확인
               </button>
             </div>
           ) : null}
@@ -229,6 +265,11 @@ export function SetupWizard({
                 원격 연결 앱 열기
               </button>
             ) : null}
+            {!tailscaleStatus?.logged_in ? (
+              <button type="button" onClick={onRefresh} className="ui-button-secondary px-4 py-2.5">
+                로그인 후 다시 확인
+              </button>
+            ) : null}
             {tailscaleStatus?.logged_in && !remoteReady ? (
               <button
                 type="button"
@@ -245,6 +286,16 @@ export function SetupWizard({
               </button>
             ) : null}
           </div>
+          {remoteReady && qrDataUrl ? (
+            <div className="mt-5 rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <img src={qrDataUrl} alt="EleMate phone access QR code" className="h-[180px] w-[180px]" />
+                <p className="ui-copy-sm max-w-[28ch] text-white/72">
+                  휴대폰 카메라로 스캔하면 바로 내 에이전트 대화창이 열립니다.
+                </p>
+              </div>
+            </div>
+          ) : null}
         </article>
       </div>
 

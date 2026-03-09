@@ -26,6 +26,7 @@
     "directories": {
       "output": "dist"
     },
+    "afterPack": "build/sign-python-archive.cjs",
     "afterSign": "build/notarize.cjs",
     "artifactName": "EleMate-${arch}.${ext}",
     "files": [
@@ -73,6 +74,7 @@
         "zip"
       ],
       "category": "public.app-category.developer-tools",
+      "notarize": false,
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",

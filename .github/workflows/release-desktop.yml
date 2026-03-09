@@ -2,6 +2,16 @@ name: Release EleMate Desktop
 
 on:
   workflow_dispatch:
+    inputs:
+      arch:
+        description: "Build target architecture"
+        required: false
+        default: "both"
+        type: choice
+        options:
+          - both
+          - arm64
+          - x64
   push:
     tags:
       - "v*"
@@ -12,10 +22,11 @@ permissions:
 jobs:
   build-macos:
     runs-on: macos-14
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        arch: [arm64, x64]
+        arch: ${{ fromJSON(github.event_name == 'workflow_dispatch' && github.event.inputs.arch == 'arm64' && '["arm64"]' || github.event_name == 'workflow_dispatch' && github.event.inputs.arch == 'x64' && '["x64"]' || '["arm64","x64"]') }}
 
     steps:
       - name: Checkout
@@ -55,6 +66,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          DEBUG: electron-builder*
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4

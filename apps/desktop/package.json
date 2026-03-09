@@ -8,9 +8,9 @@
   "scripts": {
     "start": "electron .",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder",
-    "dist:mac:arm64": "electron-builder --mac dmg zip --arm64",
-    "dist:mac:x64": "electron-builder --mac dmg zip --x64"
+    "dist": "electron-builder --publish never",
+    "dist:mac:arm64": "electron-builder --publish never --mac dmg zip --arm64",
+    "dist:mac:x64": "electron-builder --publish never --mac dmg zip --x64"
   },
   "devDependencies": {
     "electron": "37.3.1",
@@ -22,11 +22,10 @@
     "npmRebuild": false,
     "nodeGypRebuild": false,
     "buildDependenciesFromSource": false,
-    "electronDist": "../../node_modules/electron/dist",
     "directories": {
       "output": "dist"
     },
-    "artifactName": "EleMate-${version}-${arch}.${ext}",
+    "artifactName": "EleMate-${arch}.${ext}",
     "files": [
       "main.cjs",
       "preload.cjs"

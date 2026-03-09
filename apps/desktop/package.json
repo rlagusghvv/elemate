@@ -34,11 +34,37 @@
     ],
     "extraResources": [
       {
-        "from": "runtime",
-        "to": "runtime",
+        "from": "runtime/web",
+        "to": "runtime/web",
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "runtime/api",
+        "to": "runtime/api",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "runtime/scripts",
+        "to": "runtime/scripts",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "runtime/manifest.json",
+        "to": "runtime/manifest.json"
+      },
+      {
+        "from": "runtime/python-runtime.tar.gz",
+        "to": "runtime/python-runtime.tar.gz"
+      },
+      {
+        "from": "runtime/python-runtime.json",
+        "to": "runtime/python-runtime.json"
       }
     ],
     "mac": {

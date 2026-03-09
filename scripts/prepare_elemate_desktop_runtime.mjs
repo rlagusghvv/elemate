@@ -16,6 +16,8 @@ const webPublicDir = path.join(webDir, "public");
 const runtimeWebDir = path.join(desktopRuntimeDir, "web");
 const runtimeApiDir = path.join(desktopRuntimeDir, "api");
 const runtimePythonDir = path.join(desktopRuntimeDir, "python");
+const runtimePythonArchive = path.join(desktopRuntimeDir, "python-runtime.tar.gz");
+const runtimePythonManifest = path.join(desktopRuntimeDir, "python-runtime.json");
 const runtimeScriptsDir = path.join(desktopRuntimeDir, "scripts");
 
 function assertExists(target, message) {
@@ -90,6 +92,8 @@ const manifest = {
   web_server: "apps/web/server.js",
   api_dir: "api",
   python_dir: fs.existsSync(runtimePythonDir) ? "python" : null,
+  python_archive: fs.existsSync(runtimePythonArchive) ? "python-runtime.tar.gz" : null,
+  python_manifest: fs.existsSync(runtimePythonManifest) ? "python-runtime.json" : null,
   scripts_dir: "scripts",
 };
 

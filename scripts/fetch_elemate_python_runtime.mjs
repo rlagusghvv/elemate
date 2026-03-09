@@ -9,6 +9,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 const runtimeRoot = path.join(repoRoot, "apps", "desktop", "runtime");
 const pythonRoot = path.join(runtimeRoot, "python");
+const pythonArchivePath = path.join(runtimeRoot, "python-runtime.tar.gz");
+const pythonBundleManifestPath = path.join(runtimeRoot, "python-runtime.json");
 const apiDir = path.join(repoRoot, "apps", "api");
 const cacheDir = path.join(repoRoot, ".cache", "python-runtime");
 
@@ -107,6 +109,16 @@ function pruneBundledPython(root) {
   });
 }
 
+function createBundledPythonArchive(sourceDir, archivePath) {
+  fs.rmSync(archivePath, { force: true });
+  runOrThrow(
+    "tar",
+    ["-czf", archivePath, "-C", sourceDir, "."],
+    repoRoot,
+    "Archive bundled Python runtime",
+  );
+}
+
 const arch = resolveArch(process.argv[2] || envFirst("ELEMATE_DESKTOP_ARCH", "npm_config_arch"));
 const tag = envFirst("ELEMATE_PYTHON_STANDALONE_TAG") || "20251202";
 const version = envFirst("ELEMATE_PYTHON_STANDALONE_VERSION") || "3.11.14";
@@ -156,5 +168,12 @@ const manifest = {
 };
 
 fs.writeFileSync(path.join(pythonRoot, ".elemate-python-runtime.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+createBundledPythonArchive(pythonRoot, pythonArchivePath);
+fs.writeFileSync(
+  pythonBundleManifestPath,
+  `${JSON.stringify({ ...manifest, archive: path.basename(pythonArchivePath) }, null, 2)}\n`,
+  "utf8",
+);
 
 console.log(`Prepared bundled Python runtime at ${pythonRoot}`);
+console.log(`Archived bundled Python runtime at ${pythonArchivePath}`);

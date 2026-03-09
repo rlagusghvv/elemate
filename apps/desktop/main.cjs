@@ -18,7 +18,8 @@ const REPO_ROOT = app.isPackaged ? (repoRootEnv ? SOURCE_REPO_ROOT : null) : SOU
 const PACKAGED_RUNTIME_ROOT = app.isPackaged ? path.join(process.resourcesPath, "runtime") : null;
 const PACKAGED_WEB_ROOT = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "web") : null;
 const PACKAGED_API_DIR = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "api") : null;
-const PACKAGED_PYTHON_DIR = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "python") : null;
+const PACKAGED_PYTHON_ARCHIVE_PATH = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "python-runtime.tar.gz") : null;
+const PACKAGED_PYTHON_MANIFEST_PATH = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "python-runtime.json") : null;
 const PACKAGED_SCRIPTS_DIR = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "scripts") : null;
 const WEB_DIR = REPO_ROOT ? path.join(REPO_ROOT, "apps", "web") : null;
 const API_DIR = REPO_ROOT ? path.join(REPO_ROOT, "apps", "api") : null;
@@ -52,7 +53,7 @@ let runtimeState = {
     python_path: null,
     install_url: PYTHON_DOWNLOAD_URL,
     last_installed_at: null,
-    bundled_python_available: Boolean(PACKAGED_PYTHON_DIR),
+    bundled_python_available: Boolean(PACKAGED_PYTHON_ARCHIVE_PATH),
     bundled_python_version: null,
   },
 };
@@ -70,8 +71,10 @@ function getPackagedPaths() {
     webServerScript: PACKAGED_WEB_ROOT ? path.join(PACKAGED_WEB_ROOT, "apps", "web", "server.js") : null,
     webCwd: PACKAGED_WEB_ROOT ? path.join(PACKAGED_WEB_ROOT, "apps", "web") : null,
     apiDir: PACKAGED_API_DIR,
-    pythonDir: PACKAGED_PYTHON_DIR,
-    pythonManifestPath: PACKAGED_PYTHON_DIR ? path.join(PACKAGED_PYTHON_DIR, ".elemate-python-runtime.json") : null,
+    pythonDir: path.join(root, "python"),
+    pythonArchivePath: PACKAGED_PYTHON_ARCHIVE_PATH,
+    packagedPythonManifestPath: PACKAGED_PYTHON_MANIFEST_PATH,
+    pythonManifestPath: path.join(root, "python", ".elemate-python-runtime.json"),
     scriptsDir: PACKAGED_SCRIPTS_DIR,
   };
 }
@@ -83,7 +86,7 @@ function refreshRuntimePaths() {
   const paths = getPackagedPaths();
   const bootstrap = readJsonFile(paths.bootstrapPath);
   const bundledPython = getPackagedPythonCommand(paths);
-  const bundledPythonManifest = readJsonFile(paths.pythonManifestPath);
+  const bundledPythonManifest = readJsonFile(paths.pythonManifestPath) || readJsonFile(paths.packagedPythonManifestPath);
   runtimeState = {
     ...runtimeState,
     support_dir: paths.root,
@@ -93,7 +96,9 @@ function refreshRuntimePaths() {
       ...runtimeState.api,
       python_path: bootstrap?.python_path || bundledPython || runtimeState.api.python_path,
       last_installed_at: bootstrap?.installed_at || runtimeState.api.last_installed_at,
-      bundled_python_available: Boolean(bundledPython),
+      bundled_python_available: Boolean(
+        bundledPython || (paths.pythonArchivePath && fs.existsSync(paths.pythonArchivePath)),
+      ),
       bundled_python_version: bundledPythonManifest?.python_version || null,
     },
   };
@@ -252,6 +257,57 @@ function getPackagedPythonCommand(paths) {
   return null;
 }
 
+async function ensurePackagedPythonRuntime(paths) {
+  const packagedManifest = readJsonFile(paths.packagedPythonManifestPath);
+  const extractedManifest = readJsonFile(paths.pythonManifestPath);
+  const extractedPython = getPackagedPythonCommand(paths);
+  const archiveAvailable = Boolean(paths.pythonArchivePath && fs.existsSync(paths.pythonArchivePath));
+  const manifestMatches =
+    !packagedManifest ||
+    (extractedManifest && extractedManifest.generated_at === packagedManifest.generated_at);
+
+  if (extractedPython && manifestMatches) {
+    return {
+      python: extractedPython,
+      manifest: extractedManifest || packagedManifest,
+      extracted: false,
+    };
+  }
+
+  if (!archiveAvailable) {
+    return {
+      python: extractedPython,
+      manifest: extractedManifest || packagedManifest,
+      extracted: false,
+    };
+  }
+
+  fs.rmSync(paths.pythonDir, { recursive: true, force: true });
+  fs.mkdirSync(paths.pythonDir, { recursive: true });
+  appendLog(paths.bootstrapLogPath, `\n[${new Date().toISOString()}] Extracting bundled Python runtime\n`);
+  await runCommand(
+    "/usr/bin/tar",
+    ["-xzf", paths.pythonArchivePath, "-C", paths.pythonDir],
+    paths.root,
+    "bundled python extract",
+    {
+      env: { ...process.env },
+      logFile: paths.bootstrapLogPath,
+    },
+  );
+
+  const python = getPackagedPythonCommand(paths);
+  if (!python) {
+    throw new Error("앱 안에 포함된 로컬 엔진을 풀었지만 Python 실행 파일을 찾지 못했습니다. 최신 설치 파일로 다시 설치하세요.");
+  }
+
+  return {
+    python,
+    manifest: readJsonFile(paths.pythonManifestPath) || packagedManifest,
+    extracted: true,
+  };
+}
+
 function getFallbackBundledApiPython(paths) {
   return path.join(paths.venvDir, "bin", "python");
 }
@@ -266,16 +322,26 @@ async function installBundledApiRuntime(forceInstall = false) {
     throw new Error("패키지 안에 API 런타임이 들어 있지 않습니다. 최신 EleMate 설치 파일로 다시 설치하세요.");
   }
 
-  const bundledPython = getPackagedPythonCommand(paths);
-  const bundledPythonManifest = readJsonFile(paths.pythonManifestPath);
+  const desiredVersion = app.getVersion();
+  const { python: bundledPython, manifest: bundledPythonManifest, extracted: bundledPythonExtracted } =
+    await ensurePackagedPythonRuntime(paths);
   if (bundledPython) {
     setRuntimeSection("api", {
-      status: "starting",
-      message: "앱 안에 포함된 로컬 엔진을 시작하고 있습니다.",
+      status: bundledPythonExtracted ? "installing" : "starting",
+      message: bundledPythonExtracted
+        ? "앱 안에 포함된 로컬 엔진을 이 Mac에 준비하고 있습니다."
+        : "앱 안에 포함된 로컬 엔진을 시작하고 있습니다.",
       python_path: bundledPython,
       last_installed_at: bundledPythonManifest?.generated_at || runtimeState.api.last_installed_at,
       bundled_python_available: true,
       bundled_python_version: bundledPythonManifest?.python_version || runtimeState.api.bundled_python_version,
+    });
+    writeJsonFile(paths.bootstrapPath, {
+      app_version: desiredVersion,
+      python_path: bundledPython,
+      installed_at: new Date().toISOString(),
+      runtime_generated_at: bundledPythonManifest?.generated_at || null,
+      bundled_python: true,
     });
     return bundledPython;
   }
@@ -293,7 +359,6 @@ async function installBundledApiRuntime(forceInstall = false) {
 
   const previous = readJsonFile(paths.bootstrapPath);
   const venvPython = getFallbackBundledApiPython(paths);
-  const desiredVersion = app.getVersion();
   const needsInstall =
     forceInstall ||
     !fs.existsSync(venvPython) ||

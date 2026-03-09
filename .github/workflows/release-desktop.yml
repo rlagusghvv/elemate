@@ -46,11 +46,23 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Cache standalone Python archive
+        uses: actions/cache@v4
+        with:
+          path: .cache/python-runtime
+          key: python-standalone-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('scripts/fetch_elemate_python_runtime.mjs') }}
+
       - name: Install dependencies
         run: npm ci
 
       - name: Build web
         run: npm run build:web
+
+      - name: Prepare desktop runtime
+        run: npm run prepare:desktop-runtime
+
+      - name: Prepare bundled Python runtime
+        run: npm run prepare:desktop-python:${{ matrix.arch }}
 
       - name: Configure macOS code signing
         shell: bash
@@ -69,7 +81,7 @@ jobs:
           echo "CSC_KEY_PASSWORD=$MACOS_CERT_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Build desktop artifacts
-        run: npm run dist:desktop:${{ matrix.arch }}
+        run: npm --workspace apps/desktop run dist:mac:${{ matrix.arch }}
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}

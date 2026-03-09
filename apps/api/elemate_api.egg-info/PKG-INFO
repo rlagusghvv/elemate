@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: elemate-api
-Version: 0.3.0
+Version: 0.3.1
 Summary: EleMate FastAPI backend
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown

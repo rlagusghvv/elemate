@@ -28,7 +28,7 @@ def get_runtime_diagnostics(db: Session = Depends(get_db)) -> RuntimeDiagnostics
     ) or 0
 
     return RuntimeDiagnosticsOut(
-        app_version="0.3.0",
+        app_version="0.3.1",
         selected_mode=runtime.selected_mode,
         preferred_mode=runtime.preferred_mode,
         auth_provider=runtime.auth_provider,

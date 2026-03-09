@@ -50,6 +50,7 @@ Electron은 웹 기술로 데스크탑 앱 창을 만드는 도구입니다.
 
 1. `NEXT_PUBLIC_ELEMATE_DOWNLOAD_URL`는 `/download`
 2. 실제 파일 버튼은 ARM/Intel별 GitHub Release asset URL 사용
+3. 현재 기준 기본 저장소 주소는 `https://github.com/rlagusghvv/elemate/releases`
 
 ## 아직 남은 것
 

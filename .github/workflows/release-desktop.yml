@@ -108,13 +108,15 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           ELEMATE_NOTARIZE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.notarize || 'true' }}
           ELEMATE_NOTARY_POLL_INTERVAL_MS: "30000"
-          ELEMATE_NOTARY_TIMEOUT_MS: "5400000"
+          ELEMATE_NOTARY_TIMEOUT_MS: "1200000"
           DEBUG: electron-builder*
 
       - name: Upload workflow artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: elemate-desktop-${{ matrix.arch }}
+          if-no-files-found: ignore
           path: |
             apps/desktop/dist/*.dmg
             apps/desktop/dist/*.zip

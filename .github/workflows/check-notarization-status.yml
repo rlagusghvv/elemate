@@ -1,0 +1,76 @@
+name: Check notarization status
+
+on:
+  workflow_dispatch:
+    inputs:
+      submission_id:
+        description: Apple notarization submission id
+        required: true
+        type: string
+
+jobs:
+  check-status:
+    runs-on: macos-latest
+
+    steps:
+      - name: Configure notary credentials
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+            echo "Missing APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID secrets."
+            exit 1
+          fi
+          KEYCHAIN_PATH="$RUNNER_TEMP/notary-status.keychain-db"
+          KEYCHAIN_PASSWORD="notary-status"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          xcrun notarytool store-credentials elemate-notary \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --keychain "$KEYCHAIN_PATH" \
+            --no-validate
+          echo "ELEMATE_NOTARY_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "ELEMATE_NOTARY_PROFILE=elemate-notary" >> "$GITHUB_ENV"
+
+      - name: Fetch notarization status
+        run: |
+          set -euo pipefail
+          xcrun notarytool info "${{ github.event.inputs.submission_id }}" \
+            --keychain-profile "$ELEMATE_NOTARY_PROFILE" \
+            --keychain "$ELEMATE_NOTARY_KEYCHAIN" \
+            --output-format json > notary-status.json
+          cat notary-status.json
+
+      - name: Fetch notarization log for failed submission
+        run: |
+          set -euo pipefail
+          STATUS=$(python3 - <<'PY'
+import json
+with open("notary-status.json", "r", encoding="utf-8") as fh:
+    print(str(json.load(fh).get("status", "")).strip().lower())
+PY
+)
+          if [ "$STATUS" = "invalid" ] || [ "$STATUS" = "rejected" ]; then
+            xcrun notarytool log "${{ github.event.inputs.submission_id }}" notary-log.json \
+              --keychain-profile "$ELEMATE_NOTARY_PROFILE" \
+              --keychain "$ELEMATE_NOTARY_KEYCHAIN"
+            cat notary-log.json
+          else
+            echo "Skipping log fetch for status: $STATUS"
+          fi
+
+      - name: Upload notarization status artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notarization-status-${{ github.event.inputs.submission_id }}
+          if-no-files-found: ignore
+          path: |
+            notary-status.json
+            notary-log.json

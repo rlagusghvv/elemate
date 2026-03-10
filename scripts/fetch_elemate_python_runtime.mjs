@@ -98,8 +98,28 @@ function pruneBundledPython(root) {
     }
   }
 
+  const removablePaths = [
+    path.join(root, "bin", "2to3-3.11"),
+    path.join(root, "bin", "idle3.11"),
+    path.join(root, "bin", "pydoc3.11"),
+    path.join(root, "lib", "libtcl8.6.dylib"),
+    path.join(root, "lib", "libtk8.6.dylib"),
+    path.join(root, "lib", "thread2.8.9"),
+    path.join(root, "lib", "python3.11", "idlelib"),
+    path.join(root, "lib", "python3.11", "lib2to3"),
+    path.join(root, "lib", "python3.11", "test"),
+    path.join(root, "lib", "python3.11", "tkinter"),
+    path.join(root, "lib", "python3.11", "turtledemo"),
+    path.join(root, "lib", "python3.11", "lib-dynload", "_tkinter.cpython-311-darwin.so"),
+    path.join(root, "lib", "python3.11", "site-packages", "greenlet", "tests"),
+  ];
+  for (const target of removablePaths) {
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+
   walkFiles(root, (target, isDirectory) => {
-    if (isDirectory && target.includes("__pycache__")) {
+    const baseName = path.basename(target);
+    if (isDirectory && (target.includes("__pycache__") || baseName === "tests" || baseName === "test")) {
       fs.rmSync(target, { recursive: true, force: true });
       return;
     }

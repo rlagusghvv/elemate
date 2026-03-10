@@ -75,6 +75,11 @@ module.exports = async function signBundledPythonArchive(context) {
     return;
   }
 
+  if (process.env.CI !== "true" && String(process.env.ELEMATE_SIGN_BUNDLED_PYTHON || "false").toLowerCase() !== "true") {
+    console.log("Skipping bundled Python archive signing outside CI.");
+    return;
+  }
+
   const identity = findDeveloperIdIdentity();
   if (!identity) {
     console.log("Skipping bundled Python archive signing: Developer ID identity not available.");

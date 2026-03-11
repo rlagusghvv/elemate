@@ -16,7 +16,12 @@ function runOrThrow(command, args, label) {
 }
 
 function findDeveloperIdIdentity() {
-  const output = runOrThrow("/usr/bin/security", ["find-identity", "-v", "-p", "codesigning"], "find code signing identity");
+  const keychainPath = process.env.ELEMATE_CODESIGN_KEYCHAIN;
+  const args = ["/usr/bin/security", "find-identity", "-v", "-p", "codesigning"];
+  if (keychainPath) {
+    args.push(keychainPath);
+  }
+  const output = runOrThrow(args[0], args.slice(1), "find code signing identity");
   const line = output
     .split("\n")
     .find((entry) => entry.includes("Developer ID Application:"));
@@ -85,6 +90,7 @@ module.exports = async function signBundledPythonArchive(context) {
     console.log("Skipping bundled Python archive signing: Developer ID identity not available.");
     return;
   }
+  const keychainPath = process.env.ELEMATE_CODESIGN_KEYCHAIN;
 
   const appName = context.packager.appInfo.productFilename;
   const appPath = path.join(context.appOutDir, `${appName}.app`);
@@ -104,9 +110,14 @@ module.exports = async function signBundledPythonArchive(context) {
 
     const targets = collectMachOFiles(extractedDir);
     for (const target of targets) {
+      const args = ["--force", "--sign", identity];
+      if (keychainPath) {
+        args.push("--keychain", keychainPath);
+      }
+      args.push("--timestamp", "--options", "runtime", target);
       runOrThrow(
         "/usr/bin/codesign",
-        ["--force", "--sign", identity, "--timestamp", "--options", "runtime", target],
+        args,
         `codesign ${path.relative(extractedDir, target)}`,
       );
     }

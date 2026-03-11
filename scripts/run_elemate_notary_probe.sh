@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PROFILE="${ELEMATE_NOTARY_PROFILE:-elemate-notary}"
 KEYCHAIN_PATH="${ELEMATE_NOTARY_KEYCHAIN:-$HOME/Library/Keychains/login.keychain-db}"
+SIGNING_IDENTITY="${ELEMATE_SIGNING_IDENTITY:-}"
 POLL_INTERVAL_SECONDS="${ELEMATE_NOTARY_POLL_INTERVAL_SECONDS:-30}"
 TIMEOUT_SECONDS="${ELEMATE_NOTARY_TIMEOUT_SECONDS:-1200}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -58,12 +59,22 @@ find_identity() {
   security find-identity -v -p codesigning "$KEYCHAIN_PATH" 2>/dev/null | awk -F'"' '/Developer ID Application:/ {print $2; exit}'
 }
 
+find_identity_any_keychain() {
+  security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Developer ID Application:/ {print $2; exit}'
+}
+
 require_command "xcrun" "Xcode Command Line Tools가 없습니다." "notarytool과 codesign을 사용하려면 Xcode Command Line Tools가 필요합니다."
 require_command "clang" "컴파일 도구가 없습니다." "작은 probe 앱을 만들려면 clang이 필요합니다."
 require_command "security" "macOS 보안 도구가 없습니다." "Developer ID 인증서를 찾기 위해 security 명령이 필요합니다."
 require_command "codesign" "코드 서명 도구가 없습니다." "probe 앱을 서명하려면 codesign이 필요합니다."
 
-IDENTITY="$(find_identity || true)"
+IDENTITY="${SIGNING_IDENTITY}"
+if [[ -z "$IDENTITY" ]]; then
+  IDENTITY="$(find_identity || true)"
+fi
+if [[ -z "$IDENTITY" ]]; then
+  IDENTITY="$(find_identity_any_keychain || true)"
+fi
 if [[ -z "$IDENTITY" ]]; then
   stop_with_guide \
     "Developer ID Application 인증서를 찾지 못했습니다." \

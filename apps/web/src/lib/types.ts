@@ -396,11 +396,20 @@ export interface DesktopRuntimeProcessStatus {
   bundled_python_version?: string | null;
 }
 
+export interface DesktopAuthStatus {
+  status: "idle" | "starting" | "waiting_browser" | "ready" | "error";
+  message: string | null;
+  browser_url: string | null;
+  cli_available: boolean;
+  install_url: string;
+}
+
 export interface DesktopRuntimeStatus {
   mode: "bundled" | "source" | "external";
   support_dir: string | null;
   data_dir: string | null;
   logs_dir: string | null;
+  auth: DesktopAuthStatus;
   web: DesktopRuntimeProcessStatus;
   api: DesktopRuntimeProcessStatus;
 }

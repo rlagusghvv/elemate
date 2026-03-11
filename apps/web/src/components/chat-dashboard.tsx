@@ -59,7 +59,10 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
       return;
     }
     const runtimeStatus = desktopStatus?.runtime?.api.status;
-    if (!runtimeStatus || !["installing", "starting"].includes(runtimeStatus)) {
+    const authStatus = desktopStatus?.runtime?.auth.status;
+    const shouldPollRuntime = Boolean(runtimeStatus && ["installing", "starting"].includes(runtimeStatus));
+    const shouldPollAuth = Boolean(authStatus && ["starting", "waiting_browser"].includes(authStatus));
+    if (!shouldPollRuntime && !shouldPollAuth) {
       return;
     }
 
@@ -69,7 +72,14 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     }, 3000);
 
     return () => window.clearInterval(timer);
-  }, [desktopStatus?.runtime?.api.status, variant]);
+  }, [desktopStatus?.runtime?.api.status, desktopStatus?.runtime?.auth.status, variant]);
+
+  function formatDesktopErrorMessage(error: unknown, fallback: string): string {
+    if (!(error instanceof Error)) {
+      return fallback;
+    }
+    return error.message.replace(/^Error invoking remote method '[^']+':\s*Error:\s*/u, "").trim() || fallback;
+  }
 
   async function refreshDashboard() {
     setError(null);
@@ -172,7 +182,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
         }
         return;
       } catch (desktopError) {
-        setError(desktopError instanceof Error ? desktopError.message : "폴더 선택에 실패했습니다.");
+        setError(formatDesktopErrorMessage(desktopError, "폴더 선택에 실패했습니다."));
       }
     }
     setPickerOpen(true);
@@ -187,7 +197,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
       await desktopBridge.promptAccessibility();
       await refreshDesktopStatus();
     } catch (desktopError) {
-      setError(desktopError instanceof Error ? desktopError.message : "제어 권한 요청에 실패했습니다.");
+      setError(formatDesktopErrorMessage(desktopError, "제어 권한 요청에 실패했습니다."));
     }
   }
 
@@ -199,7 +209,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     try {
       await desktopBridge.openSystemPreferences(pane);
     } catch (desktopError) {
-      setError(desktopError instanceof Error ? desktopError.message : "시스템 설정을 열지 못했습니다.");
+      setError(formatDesktopErrorMessage(desktopError, "시스템 설정을 열지 못했습니다."));
     }
   }
 
@@ -209,9 +219,12 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
       return;
     }
     try {
+      setError(null);
       await desktopBridge.openChatLogin();
+      await refreshDesktopStatus();
     } catch (desktopError) {
-      setError(desktopError instanceof Error ? desktopError.message : "AI 연결 창을 열지 못했습니다.");
+      setError(formatDesktopErrorMessage(desktopError, "AI 연결을 시작하지 못했습니다."));
+      await refreshDesktopStatus();
     }
   }
 
@@ -223,7 +236,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     try {
       await desktopBridge.openRemoteAccessApp();
     } catch (desktopError) {
-      setError(desktopError instanceof Error ? desktopError.message : "원격 연결 앱을 열지 못했습니다.");
+      setError(formatDesktopErrorMessage(desktopError, "원격 연결 앱을 열지 못했습니다."));
     }
   }
 
@@ -239,7 +252,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
       setDesktopStatus((current) => (current ? { ...current, daemon: nextStatus } : null));
       await refreshDesktopStatus();
     } catch (desktopError) {
-      setError(desktopError instanceof Error ? desktopError.message : "항상 켜짐 설정에 실패했습니다.");
+      setError(formatDesktopErrorMessage(desktopError, "항상 켜짐 설정에 실패했습니다."));
     } finally {
       setIsBusy(false);
     }
@@ -256,7 +269,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
       setDesktopStatus(await desktopBridge.installLocalRuntime());
       await refreshDashboard();
     } catch (desktopError) {
-      setError(desktopError instanceof Error ? desktopError.message : "앱 준비에 실패했습니다.");
+      setError(formatDesktopErrorMessage(desktopError, "앱 준비에 실패했습니다."));
       await refreshDesktopStatus();
     } finally {
       setIsBusy(false);
@@ -274,7 +287,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
       setDesktopStatus(await desktopBridge.restartLocalServices());
       await refreshDashboard();
     } catch (desktopError) {
-      setError(desktopError instanceof Error ? desktopError.message : "로컬 서비스를 다시 시작하지 못했습니다.");
+      setError(formatDesktopErrorMessage(desktopError, "로컬 서비스를 다시 시작하지 못했습니다."));
       await refreshDesktopStatus();
     } finally {
       setIsBusy(false);

@@ -42,12 +42,20 @@ function getDesktopAppUrl() {
 let mainWindow = null;
 let apiProcess = null;
 let webProcess = null;
+let authLoginProcess = null;
 let startingApiPromise = null;
 let runtimeState = {
   mode: app.isPackaged ? "bundled" : REPO_ROOT ? "source" : "external",
   support_dir: null,
   data_dir: null,
   logs_dir: null,
+  auth: {
+    status: "idle",
+    message: null,
+    browser_url: null,
+    cli_available: Boolean(findExecutable("codex")),
+    install_url: CODEX_INSTALL_URL,
+  },
   web: {
     status: "idle",
     message: null,
@@ -73,6 +81,7 @@ function getPackagedPaths() {
     root,
     dataDir: path.join(root, "data"),
     logsDir: path.join(root, "logs"),
+    authLogPath: path.join(root, "logs", "auth-login.log"),
     apiLogPath: path.join(root, "logs", "api-server.log"),
     webLogPath: path.join(root, "logs", "web-server.log"),
     artifactsDir: path.join(root, "artifacts"),
@@ -107,6 +116,11 @@ function refreshRuntimePaths() {
     support_dir: paths.root,
     data_dir: paths.dataDir,
     logs_dir: paths.logsDir,
+    auth: {
+      ...runtimeState.auth,
+      cli_available: Boolean(findExecutable("codex")),
+      install_url: CODEX_INSTALL_URL,
+    },
     api: {
       ...runtimeState.api,
       python_path: bootstrap?.python_path || bundledPython || runtimeState.api.python_path,
@@ -124,6 +138,16 @@ function setRuntimeSection(section, patch) {
     ...runtimeState,
     [section]: {
       ...runtimeState[section],
+      ...patch,
+    },
+  };
+}
+
+function setAuthState(patch) {
+  runtimeState = {
+    ...runtimeState,
+    auth: {
+      ...runtimeState.auth,
       ...patch,
     },
   };
@@ -171,6 +195,16 @@ function readJsonFile(filePath) {
   } catch {
     return null;
   }
+}
+
+function getAuthLogPath() {
+  if (app.isPackaged) {
+    return ensurePackagedDirectories().authLogPath;
+  }
+  if (REPO_ROOT) {
+    return path.join(REPO_ROOT, "logs", "auth-login.log");
+  }
+  return path.join(app.getPath("userData"), "auth-login.log");
 }
 
 function writeJsonFile(filePath, payload) {
@@ -652,6 +686,118 @@ function mapSpawnError(command, label, error) {
   return error;
 }
 
+function parseAuthUrl(line) {
+  const match = line.match(/https:\/\/\S+/);
+  return match ? match[0] : null;
+}
+
+function startBackgroundChatLogin() {
+  const codexPath = findExecutable("codex");
+  if (!codexPath) {
+    setAuthState({
+      status: "error",
+      message: "AI 연결 구성요소가 아직 없습니다. 설치 안내 페이지를 열었습니다.",
+      browser_url: null,
+      cli_available: false,
+    });
+    void shell.openExternal(CODEX_INSTALL_URL);
+    throw new Error(
+      "AI 연결을 시작하려면 먼저 EleMate AI 연결 도구가 필요합니다.\n\n설치 안내 페이지를 열었습니다. 설치가 끝나면 다시 `AI 연결 시작`을 누르세요.",
+    );
+  }
+
+  if (authLoginProcess && authLoginProcess.exitCode === null) {
+    if (runtimeState.auth.browser_url) {
+      void shell.openExternal(runtimeState.auth.browser_url);
+    }
+    return true;
+  }
+
+  setAuthState({
+    status: "starting",
+    message: "브라우저용 AI 연결을 준비하고 있습니다.",
+    browser_url: null,
+    cli_available: true,
+  });
+
+  const child = spawn(codexPath, ["login"], {
+    cwd: REPO_ROOT || app.getPath("home"),
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env },
+  });
+  authLoginProcess = child;
+  attachChildLogs(child, getAuthLogPath());
+
+  const handleChunk = (chunk) => {
+    const text = String(chunk);
+    const lines = text.split(/\r?\n/);
+    for (const line of lines) {
+      if (!line.trim()) {
+        continue;
+      }
+      const authUrl = parseAuthUrl(line);
+      if (authUrl) {
+        setAuthState({
+          status: "waiting_browser",
+          message: "브라우저가 열렸습니다. 로그인과 권한 확인을 마치면 EleMate로 돌아오세요.",
+          browser_url: authUrl,
+        });
+        void shell.openExternal(authUrl);
+        continue;
+      }
+      if (line.includes("Starting local login server")) {
+        setAuthState({
+          status: "waiting_browser",
+          message: "브라우저에서 ChatGPT 로그인을 마무리해 주세요.",
+        });
+        continue;
+      }
+      if (line.includes("If your browser did not open")) {
+        setAuthState({
+          status: "waiting_browser",
+          message: "브라우저가 자동으로 열리지 않으면 EleMate가 표시한 로그인 링크를 다시 엽니다.",
+        });
+        continue;
+      }
+      if (line.includes("Logged in using ChatGPT")) {
+        setAuthState({
+          status: "ready",
+          message: "AI 연결이 완료되었습니다.",
+        });
+      }
+    }
+  };
+
+  child.stdout?.on("data", handleChunk);
+  child.stderr?.on("data", handleChunk);
+  child.once("error", (error) => {
+    authLoginProcess = null;
+    setAuthState({
+      status: "error",
+      message: error instanceof Error ? error.message : "AI 연결을 시작하지 못했습니다.",
+      browser_url: runtimeState.auth.browser_url,
+    });
+  });
+  child.once("exit", (code) => {
+    authLoginProcess = null;
+    const authConfigured = readJsonFile(path.join(app.getPath("home"), ".codex", "auth.json"));
+    const hasTokens = Boolean(authConfigured?.tokens?.access_token && authConfigured?.tokens?.refresh_token);
+    if (code === 0 || hasTokens) {
+      setAuthState({
+        status: "ready",
+        message: "AI 연결이 완료되었습니다.",
+      });
+      return;
+    }
+    setAuthState({
+      status: "error",
+      message: "브라우저 로그인 확인 전 연결이 종료되었습니다. 다시 시도해 주세요.",
+    });
+  });
+
+  return true;
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1540,
@@ -849,14 +995,7 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle("desktop:open-chatgpt-login", async () => {
-    if (!findExecutable("codex")) {
-      await shell.openExternal(CODEX_INSTALL_URL);
-      throw new Error(
-        "AI 연결을 시작하려면 먼저 Codex 도구가 필요합니다.\n\n설치 안내 페이지를 열었습니다. 설치가 끝나면 다시 `AI 연결 시작`을 누르세요.",
-      );
-    }
-    const baseCommand = REPO_ROOT ? `cd ${JSON.stringify(REPO_ROOT)} && codex login` : "codex login";
-    return openCommandInTerminal(baseCommand);
+    return startBackgroundChatLogin();
   });
 
   ipcMain.handle("desktop:open-remote-access-app", async () => {

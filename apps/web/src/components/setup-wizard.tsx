@@ -60,6 +60,7 @@ export function SetupWizard({
   const bundledRuntime = desktopStatus?.runtime?.mode === "bundled" ? desktopStatus.runtime : null;
   const runtimeReady = !bundledRuntime || bundledRuntime.api.status === "ready";
   const runtimeBusy = bundledRuntime ? bundledRuntime.api.status === "installing" || bundledRuntime.api.status === "starting" : false;
+  const authState = desktopStatus?.runtime?.auth;
 
   useEffect(() => {
     let isMounted = true;
@@ -197,7 +198,11 @@ export function SetupWizard({
               <p className="ui-copy-sm mt-3">
                 {onboarding?.auth_ready
                   ? onboarding.auth_account_email || "이 장비가 내 계정으로 답변합니다."
-                  : "버튼만 누르면 연결이 시작됩니다. 필요한 도구가 없으면 설치 페이지를 바로 엽니다."}
+                  : authState?.status === "waiting_browser"
+                    ? authState.message || "브라우저에서 로그인과 권한 확인을 끝내면 자동으로 연결됩니다."
+                    : authState?.status === "starting"
+                      ? authState.message || "브라우저 연결을 준비하고 있습니다."
+                      : "버튼만 누르면 브라우저가 열리고 연결이 시작됩니다. 필요한 구성요소가 없으면 설치 페이지를 바로 엽니다."}
               </p>
             </div>
             <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(Boolean(onboarding?.auth_ready))}`}>
@@ -207,10 +212,10 @@ export function SetupWizard({
           {!onboarding?.auth_ready ? (
             <div className="mt-5 flex flex-wrap gap-2">
               <button type="button" onClick={onOpenChatLogin} className="ui-button-primary px-4 py-2.5">
-                ChatGPT 연결 열기
+                {authState?.status === "waiting_browser" ? "브라우저 다시 열기" : "AI 연결 시작"}
               </button>
               <button type="button" onClick={onRefresh} className="ui-button-secondary px-4 py-2.5">
-                로그인 후 다시 확인
+                연결 상태 다시 확인
               </button>
             </div>
           ) : null}

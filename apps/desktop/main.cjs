@@ -31,6 +31,14 @@ const PYTHON_DOWNLOAD_URL = "https://www.python.org/downloads/macos/";
 const CODEX_INSTALL_URL = "https://developers.openai.com/codex/cli";
 const TAILSCALE_DOWNLOAD_URL = "https://tailscale.com/download";
 
+function getDesktopAppUrl() {
+  try {
+    return new URL("/app", WEB_URL).toString();
+  } catch {
+    return `${WEB_URL.replace(/\/$/, "")}/app`;
+  }
+}
+
 let mainWindow = null;
 let apiProcess = null;
 let webProcess = null;
@@ -659,7 +667,7 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadURL(WEB_URL);
+  mainWindow.loadURL(getDesktopAppUrl());
   mainWindow.on("closed", () => {
     mainWindow = null;
   });

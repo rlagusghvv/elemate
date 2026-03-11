@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -14,6 +15,7 @@ const webStaticDir = path.join(webDir, ".next", "static");
 const webPublicDir = path.join(webDir, "public");
 
 const runtimeWebDir = path.join(desktopRuntimeDir, "web");
+const runtimeWebArchive = path.join(desktopRuntimeDir, "web-runtime.tar.gz");
 const runtimeApiDir = path.join(desktopRuntimeDir, "api");
 const runtimePythonDir = path.join(desktopRuntimeDir, "python");
 const runtimePythonArchive = path.join(desktopRuntimeDir, "python-runtime.tar.gz");
@@ -58,6 +60,15 @@ function copyWebRuntime() {
   }
 }
 
+function archiveWebRuntime() {
+  const result = spawnSync("/usr/bin/tar", ["-czf", runtimeWebArchive, "-C", runtimeWebDir, "."], {
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    throw new Error(`웹 런타임 아카이브 생성에 실패했습니다 (exit ${result.status ?? "unknown"}).`);
+  }
+}
+
 function copyApiRuntime() {
   fs.mkdirSync(runtimeApiDir, { recursive: true });
   copyInto(path.join(apiDir, "app"), path.join(runtimeApiDir, "app"));
@@ -84,12 +95,14 @@ function copyScripts() {
 
 cleanRuntimeDir();
 copyWebRuntime();
+archiveWebRuntime();
 copyApiRuntime();
 copyScripts();
 
 const manifest = {
   generated_at: new Date().toISOString(),
   web_server: "apps/web/server.js",
+  web_archive: fs.existsSync(runtimeWebArchive) ? "web-runtime.tar.gz" : null,
   api_dir: "api",
   python_dir: fs.existsSync(runtimePythonDir) ? "python" : null,
   python_archive: fs.existsSync(runtimePythonArchive) ? "python-runtime.tar.gz" : null,

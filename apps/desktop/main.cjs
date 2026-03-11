@@ -16,7 +16,8 @@ const repoRootEnv = envFirst("ELEMATE_REPO_ROOT", "FORGE_REPO_ROOT");
 const SOURCE_REPO_ROOT = repoRootEnv ? path.resolve(repoRootEnv) : path.resolve(__dirname, "..", "..");
 const REPO_ROOT = app.isPackaged ? (repoRootEnv ? SOURCE_REPO_ROOT : null) : SOURCE_REPO_ROOT;
 const PACKAGED_RUNTIME_ROOT = app.isPackaged ? path.join(process.resourcesPath, "runtime") : null;
-const PACKAGED_WEB_ROOT = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "web") : null;
+const PACKAGED_MANIFEST_PATH = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "manifest.json") : null;
+const PACKAGED_WEB_ARCHIVE_PATH = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "web-runtime.tar.gz") : null;
 const PACKAGED_API_DIR = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "api") : null;
 const PACKAGED_PYTHON_ARCHIVE_PATH = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "python-runtime.tar.gz") : null;
 const PACKAGED_PYTHON_MANIFEST_PATH = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "python-runtime.json") : null;
@@ -43,7 +44,7 @@ let runtimeState = {
     status: "idle",
     message: null,
     url: WEB_URL,
-    bundled: Boolean(PACKAGED_WEB_ROOT),
+    bundled: Boolean(PACKAGED_WEB_ARCHIVE_PATH),
   },
   api: {
     status: app.isPackaged ? "idle" : REPO_ROOT ? "idle" : "external",
@@ -64,12 +65,18 @@ function getPackagedPaths() {
     root,
     dataDir: path.join(root, "data"),
     logsDir: path.join(root, "logs"),
+    apiLogPath: path.join(root, "logs", "api-server.log"),
+    webLogPath: path.join(root, "logs", "web-server.log"),
     artifactsDir: path.join(root, "artifacts"),
     venvDir: path.join(root, "python"),
+    webDir: path.join(root, "web"),
+    webArchivePath: PACKAGED_WEB_ARCHIVE_PATH,
+    packagedManifestPath: PACKAGED_MANIFEST_PATH,
+    webManifestPath: path.join(root, "web", ".elemate-web-runtime.json"),
     bootstrapPath: path.join(root, "bootstrap.json"),
     bootstrapLogPath: path.join(root, "logs", "api-bootstrap.log"),
-    webServerScript: PACKAGED_WEB_ROOT ? path.join(PACKAGED_WEB_ROOT, "apps", "web", "server.js") : null,
-    webCwd: PACKAGED_WEB_ROOT ? path.join(PACKAGED_WEB_ROOT, "apps", "web") : null,
+    webServerScript: path.join(root, "web", "apps", "web", "server.js"),
+    webCwd: path.join(root, "web", "apps", "web"),
     apiDir: PACKAGED_API_DIR,
     pythonDir: path.join(root, "python"),
     pythonArchivePath: PACKAGED_PYTHON_ARCHIVE_PATH,
@@ -126,6 +133,25 @@ function ensurePackagedDirectories() {
 function appendLog(filePath, message) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.appendFileSync(filePath, message, "utf8");
+}
+
+function attachChildLogs(child, logFile) {
+  if (!logFile) {
+    return;
+  }
+  appendLog(logFile, `\n[${new Date().toISOString()}] Starting process pid=${child.pid ?? "unknown"}\n`);
+  if (child.stdout) {
+    child.stdout.on("data", (chunk) => appendLog(logFile, String(chunk)));
+  }
+  if (child.stderr) {
+    child.stderr.on("data", (chunk) => appendLog(logFile, String(chunk)));
+  }
+  child.once("exit", (code, signal) => {
+    appendLog(
+      logFile,
+      `\n[${new Date().toISOString()}] Process exited code=${code ?? "null"} signal=${signal ?? "null"}\n`,
+    );
+  });
 }
 
 function readJsonFile(filePath) {
@@ -308,6 +334,51 @@ async function ensurePackagedPythonRuntime(paths) {
   };
 }
 
+async function ensurePackagedWebRuntime(paths) {
+  const packagedManifest = readJsonFile(paths.packagedManifestPath);
+  const extractedManifest = readJsonFile(paths.webManifestPath);
+  const extractedReady = fs.existsSync(paths.webServerScript);
+  const archiveAvailable = Boolean(paths.webArchivePath && fs.existsSync(paths.webArchivePath));
+  const manifestMatches =
+    !packagedManifest ||
+    (extractedManifest && extractedManifest.generated_at === packagedManifest.generated_at);
+
+  if (extractedReady && manifestMatches) {
+    return paths.webServerScript;
+  }
+
+  if (!archiveAvailable) {
+    if (extractedReady) {
+      return paths.webServerScript;
+    }
+    throw new Error("패키지 안에 EleMate 웹 번들이 없습니다. 최신 설치 파일로 다시 설치하세요.");
+  }
+
+  fs.rmSync(paths.webDir, { recursive: true, force: true });
+  fs.mkdirSync(paths.webDir, { recursive: true });
+  appendLog(paths.webLogPath, `\n[${new Date().toISOString()}] Extracting bundled web runtime\n`);
+  await runCommand(
+    "/usr/bin/tar",
+    ["-xzf", paths.webArchivePath, "-C", paths.webDir],
+    paths.root,
+    "bundled web extract",
+    {
+      env: { ...process.env },
+      logFile: paths.webLogPath,
+    },
+  );
+
+  if (!fs.existsSync(paths.webServerScript)) {
+    throw new Error("EleMate 웹 번들을 풀었지만 server.js를 찾지 못했습니다. 최신 설치 파일로 다시 설치하세요.");
+  }
+
+  writeJsonFile(paths.webManifestPath, {
+    generated_at: packagedManifest?.generated_at || new Date().toISOString(),
+  });
+
+  return paths.webServerScript;
+}
+
 function getFallbackBundledApiPython(paths) {
   return path.join(paths.venvDir, "bin", "python");
 }
@@ -412,11 +483,13 @@ function spawnBundledApiServer() {
   if (!fs.existsSync(python)) {
     throw new Error("로컬 엔진이 아직 준비되지 않았습니다. 먼저 런타임 설치를 완료하세요.");
   }
-  return spawn(python, ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"], {
+  const child = spawn(python, ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"], {
     cwd: paths.apiDir,
-    stdio: "inherit",
+    stdio: "pipe",
     env: packagedApiEnvironment(paths),
   });
+  attachChildLogs(child, paths.apiLogPath);
+  return child;
 }
 
 async function ensureBundledApiService(options = {}) {
@@ -486,13 +559,13 @@ function spawnWebServer() {
 
 function spawnBundledWebServer() {
   const paths = ensurePackagedDirectories();
-  if (!paths.webServerScript || !fs.existsSync(paths.webServerScript)) {
+  if (!fs.existsSync(paths.webServerScript)) {
     throw new Error("패키지 안에 EleMate 웹 번들이 없습니다. 최신 설치 파일로 다시 설치하세요.");
   }
 
-  return spawn(process.execPath, [paths.webServerScript], {
+  const child = spawn(process.execPath, [paths.webServerScript], {
     cwd: paths.webCwd,
-    stdio: "inherit",
+    stdio: "pipe",
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "1",
@@ -503,11 +576,15 @@ function spawnBundledWebServer() {
       ELEMATE_PUBLIC_SITE_MODE: "",
     },
   });
+  attachChildLogs(child, paths.webLogPath);
+  return child;
 }
 
 async function ensureBundledWebService() {
   setRuntimeSection("web", { status: "starting", message: "로컬 화면을 시작하고 있습니다." });
   try {
+    const paths = ensurePackagedDirectories();
+    await ensurePackagedWebRuntime(paths);
     webProcess = await ensureService(WEB_URL, spawnBundledWebServer, "web server");
     setRuntimeSection("web", { status: "ready", message: "로컬 화면이 준비되었습니다." });
     return webProcess;

@@ -36,6 +36,7 @@ function looksLikeMachOCandidate(target) {
   const normalized = target.replace(/\\/g, "/");
   return (
     normalized.includes("/bin/") ||
+    normalized.endsWith(".node") ||
     normalized.endsWith(".dylib") ||
     normalized.endsWith(".so")
   );
@@ -75,6 +76,41 @@ function collectMachOFiles(root) {
   return targets.sort((left, right) => right.length - left.length);
 }
 
+function signArchive(archivePath, label, identity, keychainPath) {
+  if (!fs.existsSync(archivePath)) {
+    console.log(`Skipping ${label} signing: archive not found.`);
+    return;
+  }
+
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "elemate-runtime-archive-"));
+  const extractedDir = path.join(tempRoot, path.basename(archivePath, ".tar.gz"));
+  fs.mkdirSync(extractedDir, { recursive: true });
+
+  try {
+    console.log(`Signing ${label} with ${identity}`);
+    runOrThrow("/usr/bin/tar", ["-xzf", archivePath, "-C", extractedDir], `extract ${label}`);
+
+    const targets = collectMachOFiles(extractedDir);
+    for (const target of targets) {
+      const args = ["--force", "--sign", identity];
+      if (keychainPath) {
+        args.push("--keychain", keychainPath);
+      }
+      args.push("--timestamp", "--options", "runtime", target);
+      runOrThrow(
+        "/usr/bin/codesign",
+        args,
+        `codesign ${path.relative(extractedDir, target)}`,
+      );
+    }
+
+    fs.rmSync(archivePath, { force: true });
+    runOrThrow("/usr/bin/tar", ["-czf", archivePath, "-C", extractedDir, "."], `repack ${label}`);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+}
+
 module.exports = async function signBundledPythonArchive(context) {
   if (context.electronPlatformName !== "darwin") {
     return;
@@ -94,37 +130,7 @@ module.exports = async function signBundledPythonArchive(context) {
 
   const appName = context.packager.appInfo.productFilename;
   const appPath = path.join(context.appOutDir, `${appName}.app`);
-  const archivePath = path.join(appPath, "Contents", "Resources", "runtime", "python-runtime.tar.gz");
-  if (!fs.existsSync(archivePath)) {
-    console.log("Skipping bundled Python archive signing: archive not found.");
-    return;
-  }
-
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "elemate-python-archive-"));
-  const extractedDir = path.join(tempRoot, "python-runtime");
-  fs.mkdirSync(extractedDir, { recursive: true });
-
-  try {
-    console.log(`Signing bundled Python archive with ${identity}`);
-    runOrThrow("/usr/bin/tar", ["-xzf", archivePath, "-C", extractedDir], "extract bundled Python archive");
-
-    const targets = collectMachOFiles(extractedDir);
-    for (const target of targets) {
-      const args = ["--force", "--sign", identity];
-      if (keychainPath) {
-        args.push("--keychain", keychainPath);
-      }
-      args.push("--timestamp", "--options", "runtime", target);
-      runOrThrow(
-        "/usr/bin/codesign",
-        args,
-        `codesign ${path.relative(extractedDir, target)}`,
-      );
-    }
-
-    fs.rmSync(archivePath, { force: true });
-    runOrThrow("/usr/bin/tar", ["-czf", archivePath, "-C", extractedDir, "."], "repack bundled Python archive");
-  } finally {
-    fs.rmSync(tempRoot, { recursive: true, force: true });
-  }
+  const runtimeRoot = path.join(appPath, "Contents", "Resources", "runtime");
+  signArchive(path.join(runtimeRoot, "python-runtime.tar.gz"), "bundled Python archive", identity, keychainPath);
+  signArchive(path.join(runtimeRoot, "web-runtime.tar.gz"), "bundled web archive", identity, keychainPath);
 };

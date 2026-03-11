@@ -23,6 +23,7 @@
     "npmRebuild": false,
     "nodeGypRebuild": false,
     "buildDependenciesFromSource": false,
+    "disableDefaultIgnoredFiles": true,
     "directories": {
       "output": "dist"
     },
@@ -34,13 +35,6 @@
       "preload.cjs"
     ],
     "extraResources": [
-      {
-        "from": "runtime/web",
-        "to": "runtime/web",
-        "filter": [
-          "**/*"
-        ]
-      },
       {
         "from": "runtime/api",
         "to": "runtime/api",
@@ -58,6 +52,10 @@
       {
         "from": "runtime/manifest.json",
         "to": "runtime/manifest.json"
+      },
+      {
+        "from": "runtime/web-runtime.tar.gz",
+        "to": "runtime/web-runtime.tar.gz"
       },
       {
         "from": "runtime/python-runtime.tar.gz",

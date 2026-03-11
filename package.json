@@ -31,5 +31,9 @@
     "dist:desktop": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python && npm --workspace apps/desktop run dist",
     "dist:desktop:arm64": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python:arm64 && npm --workspace apps/desktop run dist:mac:arm64",
     "dist:desktop:x64": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python:x64 && npm --workspace apps/desktop run dist:mac:x64"
+  },
+  "devDependencies": {
+    "@openai/codex": "^0.107.0",
+    "@openai/codex-darwin-x64": "npm:@openai/codex@^0.107.0-darwin-x64"
   }
 }

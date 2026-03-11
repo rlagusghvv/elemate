@@ -64,6 +64,10 @@
       {
         "from": "runtime/python-runtime.json",
         "to": "runtime/python-runtime.json"
+      },
+      {
+        "from": "runtime/codex-runtime.tar.gz",
+        "to": "runtime/codex-runtime.tar.gz"
       }
     ],
     "mac": {

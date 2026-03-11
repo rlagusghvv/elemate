@@ -21,6 +21,7 @@ const PACKAGED_WEB_ARCHIVE_PATH = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUN
 const PACKAGED_API_DIR = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "api") : null;
 const PACKAGED_PYTHON_ARCHIVE_PATH = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "python-runtime.tar.gz") : null;
 const PACKAGED_PYTHON_MANIFEST_PATH = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "python-runtime.json") : null;
+const PACKAGED_CODEX_ARCHIVE_PATH = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "codex-runtime.tar.gz") : null;
 const PACKAGED_SCRIPTS_DIR = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "scripts") : null;
 const WEB_DIR = REPO_ROOT ? path.join(REPO_ROOT, "apps", "web") : null;
 const API_DIR = REPO_ROOT ? path.join(REPO_ROOT, "apps", "api") : null;
@@ -53,7 +54,7 @@ let runtimeState = {
     status: "idle",
     message: null,
     browser_url: null,
-    cli_available: Boolean(findExecutable("codex")),
+    cli_available: Boolean(PACKAGED_CODEX_ARCHIVE_PATH || findExecutable("codex")),
     install_url: CODEX_INSTALL_URL,
   },
   web: {
@@ -99,6 +100,8 @@ function getPackagedPaths() {
     pythonArchivePath: PACKAGED_PYTHON_ARCHIVE_PATH,
     packagedPythonManifestPath: PACKAGED_PYTHON_MANIFEST_PATH,
     pythonManifestPath: path.join(root, "python", ".elemate-python-runtime.json"),
+    codexDir: path.join(root, "codex"),
+    codexArchivePath: PACKAGED_CODEX_ARCHIVE_PATH,
     scriptsDir: PACKAGED_SCRIPTS_DIR,
   };
 }
@@ -118,7 +121,7 @@ function refreshRuntimePaths() {
     logs_dir: paths.logsDir,
     auth: {
       ...runtimeState.auth,
-      cli_available: Boolean(findExecutable("codex")),
+      cli_available: Boolean((paths.codexArchivePath && fs.existsSync(paths.codexArchivePath)) || findExecutable("codex")),
       install_url: CODEX_INSTALL_URL,
     },
     api: {
@@ -325,6 +328,14 @@ function getPackagedPythonCommand(paths) {
   return null;
 }
 
+function getPackagedCodexEntry(paths) {
+  if (!paths.codexDir) {
+    return null;
+  }
+  const candidate = path.join(paths.codexDir, "bin", "codex.js");
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
 async function ensurePackagedPythonRuntime(paths) {
   const packagedManifest = readJsonFile(paths.packagedPythonManifestPath);
   const extractedManifest = readJsonFile(paths.pythonManifestPath);
@@ -374,6 +385,32 @@ async function ensurePackagedPythonRuntime(paths) {
     manifest: readJsonFile(paths.pythonManifestPath) || packagedManifest,
     extracted: true,
   };
+}
+
+async function ensurePackagedCodexRuntime(paths) {
+  const extractedCodex = getPackagedCodexEntry(paths);
+  if (extractedCodex) {
+    return extractedCodex;
+  }
+  if (!paths.codexArchivePath || !fs.existsSync(paths.codexArchivePath)) {
+    return null;
+  }
+
+  fs.rmSync(paths.codexDir, { recursive: true, force: true });
+  fs.mkdirSync(paths.codexDir, { recursive: true });
+  appendLog(paths.bootstrapLogPath, `\n[${new Date().toISOString()}] Extracting bundled AI auth runtime\n`);
+  await runCommand(
+    "/usr/bin/tar",
+    ["-xzf", paths.codexArchivePath, "-C", paths.codexDir],
+    paths.root,
+    "bundled ai auth extract",
+    {
+      env: { ...process.env },
+      logFile: paths.bootstrapLogPath,
+    },
+  );
+
+  return getPackagedCodexEntry(paths);
 }
 
 async function ensurePackagedWebRuntime(paths) {
@@ -677,6 +714,36 @@ function findExecutable(command) {
   return null;
 }
 
+async function resolveAiAuthCommand() {
+  if (app.isPackaged) {
+    const paths = ensurePackagedDirectories();
+    const bundledCodex = await ensurePackagedCodexRuntime(paths);
+    if (bundledCodex) {
+      return {
+        command: process.execPath,
+        args: [bundledCodex],
+        env: {
+          ...process.env,
+          ELECTRON_RUN_AS_NODE: "1",
+        },
+        source: "bundled",
+      };
+    }
+  }
+
+  const externalCodex = findExecutable("codex");
+  if (externalCodex) {
+    return {
+      command: externalCodex,
+      args: [],
+      env: { ...process.env },
+      source: "external",
+    };
+  }
+
+  return null;
+}
+
 function mapSpawnError(command, label, error) {
   if (error && error.code === "ENOENT") {
     if (command === "python3" || command.endsWith("/python")) {
@@ -691,18 +758,18 @@ function parseAuthUrl(line) {
   return match ? match[0] : null;
 }
 
-function startBackgroundChatLogin() {
-  const codexPath = findExecutable("codex");
-  if (!codexPath) {
+async function startBackgroundChatLogin() {
+  const authCommand = await resolveAiAuthCommand();
+  if (!authCommand) {
     setAuthState({
       status: "error",
-      message: "AI 연결 구성요소가 아직 없습니다. 설치 안내 페이지를 열었습니다.",
+      message: "AI 연결 구성요소를 찾지 못했습니다. 최신 EleMate 설치 파일로 다시 설치하거나, 개발 환경이면 Codex CLI를 설치하세요.",
       browser_url: null,
       cli_available: false,
     });
     void shell.openExternal(CODEX_INSTALL_URL);
     throw new Error(
-      "AI 연결을 시작하려면 먼저 EleMate AI 연결 도구가 필요합니다.\n\n설치 안내 페이지를 열었습니다. 설치가 끝나면 다시 `AI 연결 시작`을 누르세요.",
+      "AI 연결 구성요소를 찾지 못했습니다.\n\n최신 EleMate 설치 파일로 다시 설치해 주세요. 개발 환경에서 직접 실행 중이라면 Codex CLI 설치 안내 페이지를 열었습니다.",
     );
   }
 
@@ -720,10 +787,10 @@ function startBackgroundChatLogin() {
     cli_available: true,
   });
 
-  const child = spawn(codexPath, ["login"], {
+  const child = spawn(authCommand.command, [...authCommand.args, "login"], {
     cwd: REPO_ROOT || app.getPath("home"),
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env },
+    env: authCommand.env,
   });
   authLoginProcess = child;
   attachChildLogs(child, getAuthLogPath());

@@ -32,9 +32,10 @@ function findDeveloperIdIdentity() {
   return match ? match[1] : null;
 }
 
-function looksLikeMachOCandidate(target) {
+function looksLikeMachOCandidate(target, stats) {
   const normalized = target.replace(/\\/g, "/");
   return (
+    Boolean(stats.mode & 0o111) ||
     normalized.includes("/bin/") ||
     normalized.endsWith(".node") ||
     normalized.endsWith(".dylib") ||
@@ -47,7 +48,7 @@ function isMachOFile(target) {
   if (!stats.isFile() || stats.isSymbolicLink()) {
     return false;
   }
-  if (!looksLikeMachOCandidate(target)) {
+  if (!looksLikeMachOCandidate(target, stats)) {
     return false;
   }
   const description = runOrThrow("/usr/bin/file", ["-b", target], `inspect ${target}`);
@@ -133,4 +134,5 @@ module.exports = async function signBundledPythonArchive(context) {
   const runtimeRoot = path.join(appPath, "Contents", "Resources", "runtime");
   signArchive(path.join(runtimeRoot, "python-runtime.tar.gz"), "bundled Python archive", identity, keychainPath);
   signArchive(path.join(runtimeRoot, "web-runtime.tar.gz"), "bundled web archive", identity, keychainPath);
+  signArchive(path.join(runtimeRoot, "codex-runtime.tar.gz"), "bundled AI auth archive", identity, keychainPath);
 };

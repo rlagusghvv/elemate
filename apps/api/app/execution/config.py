@@ -94,7 +94,8 @@ PREFERENCES_PATH = DATA_DIR / "runtime_preferences.json"
 
 def get_auth_session_status() -> AuthSessionStatus:
     api_key = os.getenv("OPENAI_API_KEY")
-    codex_cli_available = shutil.which("codex") is not None
+    bundled_codex_available = _env_flag_first(("ELEMATE_BUNDLED_CODEX_AVAILABLE", "FORGE_BUNDLED_CODEX_AVAILABLE"), False)
+    codex_cli_available = shutil.which("codex") is not None or bundled_codex_available
     auth_path = Path.home() / ".codex" / "auth.json"
 
     codex_login_configured = False
@@ -103,7 +104,7 @@ def get_auth_session_status() -> AuthSessionStatus:
     plan_type: str | None = None
     last_refresh: str | None = None
 
-    if codex_cli_available and auth_path.exists():
+    if auth_path.exists():
         try:
             auth_payload = json.loads(auth_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   enableTailscaleServe,
@@ -38,6 +38,22 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
   const [isBusy, setIsBusy] = useState(false);
   const [showBrowserHelper, setShowBrowserHelper] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const previousAuthReady = useRef<boolean>(false);
+  const previousRemoteReady = useRef<boolean>(false);
+  const statusTimerRef = useRef<number | null>(null);
+  const pendingRemoteSetupRef = useRef<boolean>(false);
+  const remoteAutoEnableBusyRef = useRef<boolean>(false);
+
+  function showStatus(message: string) {
+    setStatusMessage(message);
+    if (statusTimerRef.current) {
+      window.clearTimeout(statusTimerRef.current);
+    }
+    statusTimerRef.current = window.setTimeout(() => {
+      setStatusMessage(null);
+    }, 3200);
+  }
 
   useEffect(() => {
     const savedWorkspace = window.localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_WORKSPACE_STORAGE_KEY);
@@ -73,6 +89,81 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
 
     return () => window.clearInterval(timer);
   }, [desktopStatus?.runtime?.api.status, desktopStatus?.runtime?.auth.status, variant]);
+
+  useEffect(() => {
+    if (variant !== "local") {
+      return;
+    }
+    const handleWake = () => {
+      void refreshDesktopStatus();
+      void refreshDashboard();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        handleWake();
+      }
+    };
+    window.addEventListener("focus", handleWake);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", handleWake);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [variant]);
+
+  useEffect(() => {
+    const authReady = Boolean(onboarding?.auth_ready);
+    if (authReady && !previousAuthReady.current) {
+      showStatus(onboarding?.auth_account_email ? `AI 연결 완료: ${onboarding.auth_account_email}` : "AI 연결이 완료되었습니다.");
+    }
+    previousAuthReady.current = authReady;
+  }, [onboarding?.auth_account_email, onboarding?.auth_ready]);
+
+  useEffect(() => {
+    return () => {
+      if (statusTimerRef.current) {
+        window.clearTimeout(statusTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const remoteReady = Boolean(tailscaleStatus?.serve_enabled);
+    if (remoteReady && !previousRemoteReady.current) {
+      showStatus("휴대폰 접속 링크가 준비되었습니다.");
+    }
+    previousRemoteReady.current = remoteReady;
+  }, [tailscaleStatus?.serve_enabled]);
+
+  useEffect(() => {
+    if (variant !== "local") {
+      return;
+    }
+    if (!pendingRemoteSetupRef.current || remoteAutoEnableBusyRef.current) {
+      return;
+    }
+    if (!tailscaleStatus?.logged_in || tailscaleStatus.serve_enabled) {
+      if (tailscaleStatus?.serve_enabled) {
+        pendingRemoteSetupRef.current = false;
+      }
+      return;
+    }
+
+    remoteAutoEnableBusyRef.current = true;
+    pendingRemoteSetupRef.current = false;
+    void (async () => {
+      try {
+        await enableTailscaleServe();
+        setTailscaleStatus(await fetchTailscaleStatus());
+        setPortal(await fetchPortalMe());
+        showStatus("원격 연결 로그인이 확인되어 휴대폰 접속을 바로 켰습니다.");
+      } catch (serveError) {
+        setError(serveError instanceof Error ? serveError.message : "휴대폰 접속을 켜지 못했습니다.");
+      } finally {
+        remoteAutoEnableBusyRef.current = false;
+      }
+    })();
+  }, [tailscaleStatus?.logged_in, tailscaleStatus?.serve_enabled, variant]);
 
   function formatDesktopErrorMessage(error: unknown, fallback: string): string {
     if (!(error instanceof Error)) {
@@ -135,8 +226,10 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
       if (nextPortal.source !== "tailscale") {
         setOnboarding(await updateOnboardingStatus({ workspace_path: path }));
       }
-      setWorkspacePath(nextPortal.workspace_path ?? path);
-      window.localStorage.setItem(WORKSPACE_STORAGE_KEY, nextPortal.workspace_path ?? path);
+      const finalPath = nextPortal.workspace_path ?? path;
+      setWorkspacePath(finalPath);
+      window.localStorage.setItem(WORKSPACE_STORAGE_KEY, finalPath);
+      showStatus(`폴더 연결 완료: ${finalPath.split("/").filter(Boolean).at(-1) || finalPath}`);
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "폴더를 저장하지 못했습니다.");
     } finally {
@@ -151,6 +244,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
       await enableTailscaleServe();
       setTailscaleStatus(await fetchTailscaleStatus());
       setPortal(await fetchPortalMe());
+      showStatus("휴대폰 접속을 켰습니다. 링크가 준비되면 바로 사용할 수 있습니다.");
     } catch (serveError) {
       setError(serveError instanceof Error ? serveError.message : "휴대폰 접속을 켜지 못했습니다.");
     } finally {
@@ -213,6 +307,24 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     }
   }
 
+  async function handlePromptScreenAccess() {
+    const desktopBridge = window.elemateDesktop ?? window.forgeDesktop;
+    if (!desktopBridge) {
+      return;
+    }
+    try {
+      const nextStatus = await desktopBridge.promptScreenAccess();
+      await refreshDesktopStatus();
+      if (nextStatus === "granted") {
+        showStatus("화면 권한이 확인되었습니다.");
+      } else {
+        showStatus("화면 권한 요청을 시도했습니다. 목록에 EleMate가 보이면 허용한 뒤 다시 확인하세요.");
+      }
+    } catch (desktopError) {
+      setError(formatDesktopErrorMessage(desktopError, "화면 권한 요청에 실패했습니다."));
+    }
+  }
+
   async function handleOpenChatLogin() {
     const desktopBridge = window.elemateDesktop ?? window.forgeDesktop;
     if (!desktopBridge) {
@@ -221,6 +333,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     try {
       setError(null);
       await desktopBridge.openChatLogin();
+      showStatus("브라우저를 열었습니다. 로그인 후 이 창으로 돌아오면 자동으로 다시 확인합니다.");
       await refreshDesktopStatus();
     } catch (desktopError) {
       setError(formatDesktopErrorMessage(desktopError, "AI 연결을 시작하지 못했습니다."));
@@ -234,7 +347,9 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
       return;
     }
     try {
+      pendingRemoteSetupRef.current = true;
       await desktopBridge.openRemoteAccessApp();
+      showStatus("원격 연결 앱을 열었습니다. 허용이나 로그인을 마치고 이 창으로 돌아오면 상태를 다시 확인합니다.");
     } catch (desktopError) {
       setError(formatDesktopErrorMessage(desktopError, "원격 연결 앱을 열지 못했습니다."));
     }
@@ -378,11 +493,15 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
             desktopStatus={desktopStatus}
             isBusy={isBusy}
             error={error}
+            statusMessage={statusMessage}
             onRefresh={() => void refreshDashboard()}
             onOpenChatLogin={() => void handleOpenChatLogin()}
             onOpenWorkspacePicker={() => void handleOpenWorkspacePicker()}
             onOpenRemoteAccessApp={() => void handleOpenRemoteAccessApp()}
             onEnableRemoteAccess={() => void handleEnableTailscaleServe()}
+            onPromptAccessibility={() => void handlePromptAccessibility()}
+            onPromptScreenAccess={() => void handlePromptScreenAccess()}
+            onOpenSystemPreferences={(pane) => void handleOpenSystemPreferences(pane)}
             onInstallBackgroundAgent={() => void handleInstallBackgroundAgent()}
             onInstallLocalRuntime={() => void handleInstallLocalRuntime()}
             onRestartLocalServices={() => void handleRestartLocalServices()}

@@ -25,6 +25,7 @@ const runtimePythonManifest = path.join(desktopRuntimeDir, "python-runtime.json"
 const runtimeCodexDir = path.join(desktopRuntimeDir, "codex");
 const runtimeCodexArchive = path.join(desktopRuntimeDir, "codex-runtime.tar.gz");
 const runtimeScriptsDir = path.join(desktopRuntimeDir, "scripts");
+const runtimePreserveDir = path.join(repoRoot, ".cache", "desktop-runtime-preserve");
 
 function assertExists(target, message) {
   if (!fs.existsSync(target)) {
@@ -41,9 +42,45 @@ function copyInto(source, destination) {
   fs.cpSync(source, destination, { recursive: true, force: true, filter: shouldCopyEntry });
 }
 
+function preserveExistingRuntimeArtifacts() {
+  fs.rmSync(runtimePreserveDir, { recursive: true, force: true });
+  fs.mkdirSync(runtimePreserveDir, { recursive: true });
+
+  const preservedFiles = [
+    ["python-runtime.tar.gz", runtimePythonArchive],
+    ["python-runtime.json", runtimePythonManifest],
+  ];
+
+  for (const [fileName, source] of preservedFiles) {
+    if (!fs.existsSync(source)) {
+      continue;
+    }
+    fs.copyFileSync(source, path.join(runtimePreserveDir, fileName));
+  }
+}
+
+function restorePreservedRuntimeArtifacts() {
+  const preservedFiles = [
+    ["python-runtime.tar.gz", runtimePythonArchive],
+    ["python-runtime.json", runtimePythonManifest],
+  ];
+
+  for (const [fileName, destination] of preservedFiles) {
+    const source = path.join(runtimePreserveDir, fileName);
+    if (!fs.existsSync(source)) {
+      continue;
+    }
+    fs.copyFileSync(source, destination);
+  }
+
+  fs.rmSync(runtimePreserveDir, { recursive: true, force: true });
+}
+
 function cleanRuntimeDir() {
+  preserveExistingRuntimeArtifacts();
   fs.rmSync(desktopRuntimeDir, { recursive: true, force: true });
   fs.mkdirSync(desktopRuntimeDir, { recursive: true });
+  restorePreservedRuntimeArtifacts();
 }
 
 function copyWebRuntime() {

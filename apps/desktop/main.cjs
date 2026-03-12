@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell, systemPreferences } = require("electron");
+const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell, systemPreferences } = require("electron");
 const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -308,6 +308,7 @@ function packagedApiEnvironment(paths) {
     ELEMATE_SCRIPTS_DIR: paths.scriptsDir || "",
     ELEMATE_WORKSPACE_ROOT: app.getPath("home"),
     ELEMATE_PACKAGED_RUNTIME: "1",
+    ELEMATE_BUNDLED_CODEX_AVAILABLE: paths.codexArchivePath && fs.existsSync(paths.codexArchivePath) ? "1" : "",
   };
 }
 
@@ -794,6 +795,8 @@ async function startBackgroundChatLogin() {
   });
   authLoginProcess = child;
   attachChildLogs(child, getAuthLogPath());
+  let loginUrl = null;
+  let browserOpenedByApp = false;
 
   const handleChunk = (chunk) => {
     const text = String(chunk);
@@ -804,12 +807,12 @@ async function startBackgroundChatLogin() {
       }
       const authUrl = parseAuthUrl(line);
       if (authUrl) {
+        loginUrl = authUrl;
         setAuthState({
           status: "waiting_browser",
           message: "브라우저가 열렸습니다. 로그인과 권한 확인을 마치면 EleMate로 돌아오세요.",
           browser_url: authUrl,
         });
-        void shell.openExternal(authUrl);
         continue;
       }
       if (line.includes("Starting local login server")) {
@@ -824,6 +827,10 @@ async function startBackgroundChatLogin() {
           status: "waiting_browser",
           message: "브라우저가 자동으로 열리지 않으면 EleMate가 표시한 로그인 링크를 다시 엽니다.",
         });
+        if (loginUrl && !browserOpenedByApp) {
+          browserOpenedByApp = true;
+          void shell.openExternal(loginUrl);
+        }
         continue;
       }
       if (line.includes("Logged in using ChatGPT")) {
@@ -1046,6 +1053,23 @@ function registerIpcHandlers() {
       return false;
     }
     return systemPreferences.isTrustedAccessibilityClient(true);
+  });
+
+  ipcMain.handle("desktop:prompt-screen-access", async () => {
+    if (process.platform !== "darwin") {
+      return "unsupported";
+    }
+
+    try {
+      await desktopCapturer.getSources({
+        types: ["screen"],
+        thumbnailSize: { width: 0, height: 0 },
+      });
+    } catch {
+      // macOS may still require the user to allow the app in System Settings.
+    }
+
+    return getPermissionStatus("screen");
   });
 
   ipcMain.handle("desktop:open-system-preferences", async (_event, pane) => {

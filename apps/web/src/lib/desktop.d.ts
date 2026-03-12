@@ -8,6 +8,7 @@ declare global {
       restartLocalServices: () => Promise<DesktopBridgeStatus>;
       chooseDirectory: () => Promise<string | null>;
       promptAccessibility: () => Promise<boolean>;
+      promptScreenAccess: () => Promise<string>;
       openSystemPreferences: (pane: "accessibility" | "screen") => Promise<boolean>;
       openChatLogin: () => Promise<boolean>;
       openRemoteAccessApp: () => Promise<boolean>;
@@ -22,6 +23,7 @@ declare global {
       restartLocalServices: () => Promise<DesktopBridgeStatus>;
       chooseDirectory: () => Promise<string | null>;
       promptAccessibility: () => Promise<boolean>;
+      promptScreenAccess: () => Promise<string>;
       openSystemPreferences: (pane: "accessibility" | "screen") => Promise<boolean>;
       openChatLogin: () => Promise<boolean>;
       openRemoteAccessApp: () => Promise<boolean>;

@@ -14,11 +14,15 @@ interface SetupWizardProps {
   desktopStatus: DesktopBridgeStatus | null;
   isBusy: boolean;
   error: string | null;
+  statusMessage: string | null;
   onRefresh: () => void;
   onOpenChatLogin: () => void;
   onOpenWorkspacePicker: () => void;
   onOpenRemoteAccessApp: () => void;
   onEnableRemoteAccess: () => void;
+  onPromptAccessibility: () => void;
+  onPromptScreenAccess: () => void;
+  onOpenSystemPreferences: (pane: "accessibility" | "screen") => void;
   onInstallBackgroundAgent: () => void;
   onInstallLocalRuntime: () => void;
   onRestartLocalServices: () => void;
@@ -40,11 +44,15 @@ export function SetupWizard({
   desktopStatus,
   isBusy,
   error,
+  statusMessage,
   onRefresh,
   onOpenChatLogin,
   onOpenWorkspacePicker,
   onOpenRemoteAccessApp,
   onEnableRemoteAccess,
+  onPromptAccessibility,
+  onPromptScreenAccess,
+  onOpenSystemPreferences,
   onInstallBackgroundAgent,
   onInstallLocalRuntime,
   onRestartLocalServices,
@@ -61,6 +69,9 @@ export function SetupWizard({
   const runtimeReady = !bundledRuntime || bundledRuntime.api.status === "ready";
   const runtimeBusy = bundledRuntime ? bundledRuntime.api.status === "installing" || bundledRuntime.api.status === "starting" : false;
   const authState = desktopStatus?.runtime?.auth;
+  const workspaceName = selectedWorkspace.split("/").filter(Boolean).at(-1) || null;
+  const accessibilityGranted = desktopStatus?.permissions.accessibility === "granted";
+  const screenGranted = desktopStatus?.permissions.screen === "granted";
 
   useEffect(() => {
     let isMounted = true;
@@ -199,11 +210,14 @@ export function SetupWizard({
                 {onboarding?.auth_ready
                   ? onboarding.auth_account_email || "이 장비가 내 계정으로 답변합니다."
                   : authState?.status === "waiting_browser"
-                    ? authState.message || "브라우저에서 로그인과 권한 확인을 끝내면 자동으로 연결됩니다."
+                    ? authState.message || "브라우저에서 로그인과 권한 확인을 끝내고 이 창으로 돌아오면 자동으로 연결 상태를 확인합니다."
                     : authState?.status === "starting"
                       ? authState.message || "브라우저 연결을 준비하고 있습니다."
-                      : "버튼만 누르면 브라우저가 열리고 연결이 시작됩니다. 필요한 구성요소가 없으면 설치 페이지를 바로 엽니다."}
+                      : "버튼을 누르면 브라우저가 열립니다. 로그인 뒤 이 창으로 돌아오면 연결 완료 여부가 바로 반영됩니다."}
               </p>
+              {onboarding?.auth_ready ? (
+                <p className="ui-copy-sm mt-2 text-emerald-100/88">정상 연결되면 이 카드가 완료 상태로 바뀌고 계정 이메일이 표시됩니다.</p>
+              ) : null}
             </div>
             <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(Boolean(onboarding?.auth_ready))}`}>
               {statusLabel(Boolean(onboarding?.auth_ready))}
@@ -229,6 +243,11 @@ export function SetupWizard({
               <p className="ui-copy-sm mt-3 break-all">
                 {selectedWorkspace ? selectedWorkspace : "문서가 들어 있는 폴더 하나만 고르면 충분합니다."}
               </p>
+              {selectedWorkspace ? (
+                <p className="ui-copy-sm mt-2 text-white/78">
+                  현재 선택된 폴더: <span className="font-semibold text-white">{workspaceName}</span>
+                </p>
+              ) : null}
             </div>
             <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(Boolean(selectedWorkspace))}`}>
               {statusLabel(Boolean(selectedWorkspace))}
@@ -254,11 +273,51 @@ export function SetupWizard({
               </p>
               <p className="ui-copy-sm mt-3 break-all">
                 {!tailscaleStatus?.logged_in
-                  ? "원격 연결 앱을 열고 로그인하면 됩니다. 앱이 없으면 설치 페이지를 바로 엽니다."
+                  ? "원격 연결 앱을 열고 로그인하면 됩니다. macOS가 허용을 요구하면 먼저 허용하고, 완료 후 이 창으로 돌아오면 상태를 다시 읽습니다."
                   : remoteReady
                     ? linkValue || "개인 링크가 준비되었습니다."
-                    : "한 번만 켜 두면 앞으로는 휴대폰에서 바로 접속할 수 있습니다."}
+                    : "한 번만 켜 두면 앞으로는 휴대폰에서 바로 접속할 수 있습니다. 허용 뒤 Tailscale만 다시 열면 되고, EleMate는 다시 확인만 하면 됩니다."}
               </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(accessibilityGranted)}`}>
+                  제어 권한 {accessibilityGranted ? "허용됨" : "확인 필요"}
+                </span>
+                <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(screenGranted)}`}>
+                  화면 권한 {screenGranted ? "허용됨" : "확인 필요"}
+                </span>
+              </div>
+              {!accessibilityGranted || !screenGranted ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {!accessibilityGranted ? (
+                    <>
+                      <button type="button" onClick={onPromptAccessibility} className="ui-button-secondary px-4 py-2.5">
+                        제어 권한 허용
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onOpenSystemPreferences("accessibility")}
+                        className="ui-button-secondary px-4 py-2.5"
+                      >
+                        접근성 설정 열기
+                      </button>
+                    </>
+                  ) : null}
+                  {!screenGranted ? (
+                    <>
+                      <button type="button" onClick={onPromptScreenAccess} className="ui-button-secondary px-4 py-2.5">
+                        화면 권한 요청
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onOpenSystemPreferences("screen")}
+                        className="ui-button-secondary px-4 py-2.5"
+                      >
+                        화면 권한 설정 열기
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(remoteReady)}`}>
               {statusLabel(remoteReady, !tailscaleStatus?.logged_in ? "로그인 필요" : "설정 필요")}
@@ -272,7 +331,7 @@ export function SetupWizard({
             ) : null}
             {!tailscaleStatus?.logged_in ? (
               <button type="button" onClick={onRefresh} className="ui-button-secondary px-4 py-2.5">
-                로그인 후 다시 확인
+                허용/로그인 후 다시 확인
               </button>
             ) : null}
             {tailscaleStatus?.logged_in && !remoteReady ? (
@@ -337,6 +396,7 @@ export function SetupWizard({
       </div>
 
       {copyMessage ? <p className="mt-4 text-sm text-sky-100">{copyMessage}</p> : null}
+      {statusMessage ? <p className="mt-4 rounded-[20px] border border-emerald-400/22 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-50">{statusMessage}</p> : null}
       {error ? <p className="mt-4 rounded-[20px] border border-rose-400/22 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</p> : null}
     </section>
   );

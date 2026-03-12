@@ -404,6 +404,22 @@ export interface DesktopAuthStatus {
   install_url: string;
 }
 
+export interface DesktopBridgeApi {
+  getStatus: () => Promise<DesktopBridgeStatus>;
+  installLocalRuntime: () => Promise<DesktopBridgeStatus>;
+  restartLocalServices: () => Promise<DesktopBridgeStatus>;
+  chooseDirectory: () => Promise<string | null>;
+  promptAccessibility: () => Promise<boolean>;
+  promptScreenAccess: () => Promise<string>;
+  openSystemPreferences: (pane: "accessibility" | "screen") => Promise<boolean>;
+  openChatLogin: () => Promise<boolean>;
+  openRemoteAccessApp: () => Promise<boolean>;
+  installBackgroundAgent: () => Promise<DesktopDaemonStatus>;
+  uninstallBackgroundAgent: () => Promise<DesktopDaemonStatus>;
+  runTerminalCommand: (command: string) => Promise<boolean>;
+  prepareTerminalCommand: (command: string) => Promise<string>;
+}
+
 export interface DesktopRuntimeStatus {
   mode: "bundled" | "source" | "external";
   support_dir: string | null;

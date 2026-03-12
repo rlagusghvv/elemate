@@ -23,6 +23,7 @@ interface SetupWizardProps {
   onPromptAccessibility: () => void;
   onPromptScreenAccess: () => void;
   onOpenSystemPreferences: (pane: "accessibility" | "screen") => void;
+  onRelaunchApp: () => void;
   onInstallBackgroundAgent: () => void;
   onInstallLocalRuntime: () => void;
   onRestartLocalServices: () => void;
@@ -53,6 +54,7 @@ export function SetupWizard({
   onPromptAccessibility,
   onPromptScreenAccess,
   onOpenSystemPreferences,
+  onRelaunchApp,
   onInstallBackgroundAgent,
   onInstallLocalRuntime,
   onRestartLocalServices,
@@ -65,6 +67,8 @@ export function SetupWizard({
   const readyCount = [onboarding?.auth_ready, Boolean(selectedWorkspace), Boolean(tailscaleStatus?.serve_enabled)].filter(Boolean).length;
   const optionalAlwaysOn = Boolean(desktopStatus?.daemon.loaded);
   const remoteReady = Boolean(tailscaleStatus?.serve_enabled);
+  const remoteLoggedIn = Boolean(tailscaleStatus?.logged_in);
+  const remoteRunning = Boolean(tailscaleStatus?.service_running);
   const bundledRuntime = desktopStatus?.runtime?.mode === "bundled" ? desktopStatus.runtime : null;
   const runtimeReady = !bundledRuntime || bundledRuntime.api.status === "ready";
   const runtimeBusy = bundledRuntime ? bundledRuntime.api.status === "installing" || bundledRuntime.api.status === "starting" : false;
@@ -114,11 +118,17 @@ export function SetupWizard({
     if (!selectedWorkspace) {
       return "이제 내 파일이 들어 있는 폴더만 고르면 됩니다.";
     }
+    if (!remoteLoggedIn) {
+      return "마지막으로 원격 연결 로그인만 끝내면 됩니다.";
+    }
+    if (!remoteRunning) {
+      return "원격 연결은 이미 계정이 연결돼 있습니다. 이제 연결만 다시 켜면 됩니다.";
+    }
     if (!remoteReady) {
       return "마지막으로 휴대폰 접속만 켜면 설정이 끝납니다.";
     }
     return "준비가 끝났습니다. 이제 휴대폰에서 바로 말을 걸면 됩니다.";
-  }, [onboarding?.auth_ready, remoteReady, runtimeReady, selectedWorkspace]);
+  }, [onboarding?.auth_ready, remoteLoggedIn, remoteReady, remoteRunning, runtimeReady, selectedWorkspace]);
 
   async function copyValue(value: string | null | undefined, message: string) {
     if (!value) {
@@ -265,19 +275,28 @@ export function SetupWizard({
             <div>
               <p className="eyebrow">03 휴대폰 연결</p>
               <p className="ui-title-card mt-3">
-                {!tailscaleStatus?.logged_in
+                {!remoteLoggedIn
                   ? "원격 연결 로그인"
+                  : !remoteRunning
+                    ? "원격 연결 다시 켜기"
                   : remoteReady
                     ? "휴대폰 링크 준비 완료"
                     : "휴대폰 접속 켜기"}
               </p>
               <p className="ui-copy-sm mt-3 break-all">
-                {!tailscaleStatus?.logged_in
-                  ? "원격 연결 앱을 열고 로그인하면 됩니다. macOS가 허용을 요구하면 먼저 허용하고, 완료 후 이 창으로 돌아오면 상태를 다시 읽습니다."
+                {!remoteLoggedIn
+                  ? "원격 연결 버튼을 누르면 로그인 흐름을 직접 시작합니다. 로그인과 허용을 마친 뒤 이 창으로 돌아오면 상태를 다시 읽습니다."
+                  : !remoteRunning
+                    ? "이 장비는 이미 내 원격 연결 계정에 묶여 있지만 현재 연결이 꺼져 있습니다. 버튼을 누르면 다시 연결을 시작합니다."
                   : remoteReady
                     ? linkValue || "개인 링크가 준비되었습니다."
-                    : "한 번만 켜 두면 앞으로는 휴대폰에서 바로 접속할 수 있습니다. 허용 뒤 Tailscale만 다시 열면 되고, EleMate는 다시 확인만 하면 됩니다."}
+                    : "한 번만 켜 두면 앞으로는 휴대폰에서 바로 접속할 수 있습니다. 원격 연결이 살아 있으면 EleMate가 바로 휴대폰 링크를 엽니다."}
               </p>
+              {screenGranted ? null : (
+                <p className="ui-copy-sm mt-3 text-white/62">
+                  macOS 화면 권한은 허용 후 앱을 다시 켜야 반영될 수 있습니다. EleMate가 목록에 안 보이면 먼저 `화면 권한 요청`을 눌러 주세요.
+                </p>
+              )}
               <div className="mt-3 flex flex-wrap gap-2">
                 <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(accessibilityGranted)}`}>
                   제어 권한 {accessibilityGranted ? "허용됨" : "확인 필요"}
@@ -314,6 +333,9 @@ export function SetupWizard({
                       >
                         화면 권한 설정 열기
                       </button>
+                      <button type="button" onClick={onRelaunchApp} className="ui-button-secondary px-4 py-2.5">
+                        허용 후 앱 다시 시작
+                      </button>
                     </>
                   ) : null}
                 </div>
@@ -324,17 +346,17 @@ export function SetupWizard({
             </span>
           </div>
           <div className="mt-5 flex flex-wrap gap-2">
-            {!tailscaleStatus?.logged_in ? (
+            {!remoteLoggedIn || !remoteRunning ? (
               <button type="button" onClick={onOpenRemoteAccessApp} className="ui-button-secondary px-4 py-2.5">
-                원격 연결 앱 열기
+                {!remoteLoggedIn ? "원격 연결 로그인 시작" : "원격 연결 다시 켜기"}
               </button>
             ) : null}
-            {!tailscaleStatus?.logged_in ? (
+            {!remoteLoggedIn || !remoteRunning ? (
               <button type="button" onClick={onRefresh} className="ui-button-secondary px-4 py-2.5">
-                허용/로그인 후 다시 확인
+                허용/연결 후 다시 확인
               </button>
             ) : null}
-            {tailscaleStatus?.logged_in && !remoteReady ? (
+            {remoteLoggedIn && remoteRunning && !remoteReady ? (
               <button
                 type="button"
                 onClick={onEnableRemoteAccess}

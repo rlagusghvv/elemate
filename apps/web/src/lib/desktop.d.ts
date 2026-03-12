@@ -12,6 +12,7 @@ declare global {
       openSystemPreferences: (pane: "accessibility" | "screen") => Promise<boolean>;
       openChatLogin: () => Promise<boolean>;
       openRemoteAccessApp: () => Promise<boolean>;
+      relaunchApp: () => Promise<boolean>;
       installBackgroundAgent: () => Promise<DesktopDaemonStatus>;
       uninstallBackgroundAgent: () => Promise<DesktopDaemonStatus>;
       runTerminalCommand: (command: string) => Promise<boolean>;
@@ -27,6 +28,7 @@ declare global {
       openSystemPreferences: (pane: "accessibility" | "screen") => Promise<boolean>;
       openChatLogin: () => Promise<boolean>;
       openRemoteAccessApp: () => Promise<boolean>;
+      relaunchApp: () => Promise<boolean>;
       installBackgroundAgent: () => Promise<DesktopDaemonStatus>;
       uninstallBackgroundAgent: () => Promise<DesktopDaemonStatus>;
       runTerminalCommand: (command: string) => Promise<boolean>;

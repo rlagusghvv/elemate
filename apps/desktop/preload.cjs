@@ -10,6 +10,7 @@ const desktopBridge = {
   openSystemPreferences: (pane) => ipcRenderer.invoke("desktop:open-system-preferences", pane),
   openChatLogin: () => ipcRenderer.invoke("desktop:open-chatgpt-login"),
   openRemoteAccessApp: () => ipcRenderer.invoke("desktop:open-remote-access-app"),
+  relaunchApp: () => ipcRenderer.invoke("desktop:relaunch-app"),
   installBackgroundAgent: () => ipcRenderer.invoke("desktop:install-background-agent"),
   uninstallBackgroundAgent: () => ipcRenderer.invoke("desktop:uninstall-background-agent"),
   runTerminalCommand: (command) => ipcRenderer.invoke("desktop:run-terminal-command", command),

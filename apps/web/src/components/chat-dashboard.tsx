@@ -55,6 +55,11 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     }, 3200);
   }
 
+  async function refreshAll() {
+    await refreshDesktopStatus();
+    await refreshDashboard();
+  }
+
   useEffect(() => {
     const savedWorkspace = window.localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_WORKSPACE_STORAGE_KEY);
     if (savedWorkspace) {
@@ -65,8 +70,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
 
   useEffect(() => {
     void (async () => {
-      await refreshDesktopStatus();
-      await refreshDashboard();
+      await refreshAll();
     })();
   }, []);
 
@@ -83,8 +87,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     }
 
     const timer = window.setInterval(() => {
-      void refreshDesktopStatus();
-      void refreshDashboard();
+      void refreshAll();
     }, 3000);
 
     return () => window.clearInterval(timer);
@@ -95,8 +98,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
       return;
     }
     const handleWake = () => {
-      void refreshDesktopStatus();
-      void refreshDashboard();
+      void refreshAll();
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -318,7 +320,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
       if (nextStatus === "granted") {
         showStatus("화면 권한이 확인되었습니다.");
       } else {
-        showStatus("화면 권한 요청을 시도했습니다. 목록에 EleMate가 보이면 허용한 뒤 다시 확인하세요.");
+        showStatus("화면 권한 요청을 시도했습니다. 시스템 설정이 열리면 EleMate를 허용하고 앱을 다시 시작하세요.");
       }
     } catch (desktopError) {
       setError(formatDesktopErrorMessage(desktopError, "화면 권한 요청에 실패했습니다."));
@@ -349,9 +351,22 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     try {
       pendingRemoteSetupRef.current = true;
       await desktopBridge.openRemoteAccessApp();
-      showStatus("원격 연결 앱을 열었습니다. 허용이나 로그인을 마치고 이 창으로 돌아오면 상태를 다시 확인합니다.");
+      showStatus("원격 연결을 시작했습니다. 로그인이나 허용이 끝나면 이 창으로 돌아오면 상태를 다시 확인합니다.");
+      await refreshDashboard();
     } catch (desktopError) {
       setError(formatDesktopErrorMessage(desktopError, "원격 연결 앱을 열지 못했습니다."));
+    }
+  }
+
+  async function handleRelaunchApp() {
+    const desktopBridge = window.elemateDesktop ?? window.forgeDesktop;
+    if (!desktopBridge) {
+      return;
+    }
+    try {
+      await desktopBridge.relaunchApp();
+    } catch (desktopError) {
+      setError(formatDesktopErrorMessage(desktopError, "앱을 다시 시작하지 못했습니다."));
     }
   }
 
@@ -494,7 +509,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
             isBusy={isBusy}
             error={error}
             statusMessage={statusMessage}
-            onRefresh={() => void refreshDashboard()}
+            onRefresh={() => void refreshAll()}
             onOpenChatLogin={() => void handleOpenChatLogin()}
             onOpenWorkspacePicker={() => void handleOpenWorkspacePicker()}
             onOpenRemoteAccessApp={() => void handleOpenRemoteAccessApp()}
@@ -502,6 +517,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
             onPromptAccessibility={() => void handlePromptAccessibility()}
             onPromptScreenAccess={() => void handlePromptScreenAccess()}
             onOpenSystemPreferences={(pane) => void handleOpenSystemPreferences(pane)}
+            onRelaunchApp={() => void handleRelaunchApp()}
             onInstallBackgroundAgent={() => void handleInstallBackgroundAgent()}
             onInstallLocalRuntime={() => void handleInstallLocalRuntime()}
             onRestartLocalServices={() => void handleRestartLocalServices()}

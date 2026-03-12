@@ -384,7 +384,10 @@ class TailscaleStatusOut(BaseModel):
     cli_available: bool
     cli_path: str | None
     logged_in: bool
+    service_running: bool
+    has_node_key: bool
     backend_state: str | None
+    auth_url: str | None
     self_dns_name: str | None
     current_tailnet: str | None
     current_user_login: str | None

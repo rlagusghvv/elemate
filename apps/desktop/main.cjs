@@ -715,6 +715,86 @@ function findExecutable(command) {
   return null;
 }
 
+function findTailscaleBinary() {
+  const external = findExecutable("tailscale");
+  if (external) {
+    return external;
+  }
+
+  const candidates = [
+    "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+    path.join(app.getPath("home"), "Applications", "Tailscale.app", "Contents", "MacOS", "Tailscale"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function readTailscaleStatus(binary) {
+  const result = spawnSync(binary, ["status", "--json"], { encoding: "utf8" });
+  if (result.status !== 0) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(result.stdout);
+    return payload && typeof payload === "object" ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+function launchDetachedCommand(command, args, extraEnv = {}) {
+  const child = spawn(command, args, {
+    detached: true,
+    stdio: "ignore",
+    env: { ...process.env, ...extraEnv },
+  });
+  child.unref();
+}
+
+function openTailscaleApp() {
+  const byName = spawnSync("/usr/bin/open", ["-a", "Tailscale"], { encoding: "utf8" });
+  if (byName.status === 0) {
+    return true;
+  }
+
+  const candidates = [
+    "/Applications/Tailscale.app",
+    path.join(app.getPath("home"), "Applications", "Tailscale.app"),
+  ];
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate)) {
+      continue;
+    }
+    const result = spawnSync("/usr/bin/open", [candidate], { encoding: "utf8" });
+    if (result.status === 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function startTailscaleInteractiveFlow() {
+  const binary = findTailscaleBinary();
+  if (!binary) {
+    return false;
+  }
+
+  const status = readTailscaleStatus(binary);
+  const backendState = typeof status?.BackendState === "string" ? status.BackendState : null;
+  const authUrl = typeof status?.AuthURL === "string" ? status.AuthURL : "";
+  const hasNodeKey = Boolean(status?.HaveNodeKey);
+  const alreadyLoggedIn = Boolean(hasNodeKey && !authUrl);
+  const commandArgs = alreadyLoggedIn ? ["up", "--timeout", "20s"] : ["login", "--timeout", "20s"];
+
+  launchDetachedCommand(binary, commandArgs);
+  openTailscaleApp();
+  return backendState !== null || alreadyLoggedIn;
+}
+
 async function resolveAiAuthCommand() {
   if (app.isPackaged) {
     const paths = ensurePackagedDirectories();
@@ -1069,7 +1149,11 @@ function registerIpcHandlers() {
       // macOS may still require the user to allow the app in System Settings.
     }
 
-    return getPermissionStatus("screen");
+    const status = getPermissionStatus("screen");
+    if (status !== "granted") {
+      await shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture");
+    }
+    return status;
   });
 
   ipcMain.handle("desktop:open-system-preferences", async (_event, pane) => {
@@ -1090,20 +1174,16 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle("desktop:open-remote-access-app", async () => {
-    const candidates = [
-      "/Applications/Tailscale.app",
-      path.join(app.getPath("home"), "Applications", "Tailscale.app"),
-    ];
-    for (const candidate of candidates) {
-      if (!fs.existsSync(candidate)) {
-        continue;
-      }
-      const result = await shell.openPath(candidate);
-      if (!result) {
-        return true;
-      }
+    if (startTailscaleInteractiveFlow()) {
+      return true;
     }
     await shell.openExternal(TAILSCALE_DOWNLOAD_URL);
+    return true;
+  });
+
+  ipcMain.handle("desktop:relaunch-app", async () => {
+    app.relaunch();
+    app.exit(0);
     return true;
   });
 

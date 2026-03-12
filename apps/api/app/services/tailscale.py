@@ -26,7 +26,10 @@ def get_tailscale_status() -> TailscaleStatusOut:
             cli_available=False,
             cli_path=None,
             logged_in=False,
+            service_running=False,
+            has_node_key=False,
             backend_state=None,
+            auth_url=None,
             self_dns_name=None,
             current_tailnet=None,
             current_user_login=None,
@@ -49,6 +52,10 @@ def get_tailscale_status() -> TailscaleStatusOut:
     user_login = _string_or_none(current_user.get("LoginName"))
     user_name = _string_or_none(current_user.get("DisplayName"))
     backend_state = _string_or_none(status_payload.get("BackendState"))
+    auth_url = _string_or_none(status_payload.get("AuthURL"))
+    has_node_key = bool(status_payload.get("HaveNodeKey"))
+    service_running = backend_state == "Running"
+    logged_in = bool((has_node_key or user_login or user_name) and not auth_url)
     current_tailnet = dns_name.split(".", 1)[1] if dns_name and "." in dns_name else None
     serve_enabled = bool(serve_payload.get("TCP")) or bool(serve_payload.get("Web"))
     serve_url = f"https://{dns_name}" if dns_name and serve_enabled else None
@@ -56,8 +63,11 @@ def get_tailscale_status() -> TailscaleStatusOut:
     return TailscaleStatusOut(
         cli_available=True,
         cli_path=binary,
-        logged_in=backend_state == "Running",
+        logged_in=logged_in,
+        service_running=service_running,
+        has_node_key=has_node_key,
         backend_state=backend_state,
+        auth_url=auth_url,
         self_dns_name=dns_name,
         current_tailnet=current_tailnet,
         current_user_login=user_login,
@@ -77,11 +87,21 @@ def enable_tailscale_serve(*, local_port: int = 3000) -> TailscaleServeApplyResu
     if binary is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tailscale CLI is not installed on this machine.")
 
+    status_payload = get_tailscale_status()
+    if not status_payload.logged_in:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="먼저 원격 연결 로그인을 완료해야 합니다. Tailscale 앱을 열어 로그인한 뒤 다시 시도하세요.",
+        )
+
+    if not status_payload.service_running:
+        _run_checked_command(
+            [binary, "up", "--timeout", "20s"],
+            default_detail="Failed to start the Tailscale connection.",
+        )
+
     command = [binary, "serve", "--bg", str(local_port)]
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
-    if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip() or "Failed to enable Tailscale Serve."
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+    completed = _run_checked_command(command, default_detail="Failed to enable Tailscale Serve.")
 
     status_payload = get_tailscale_status()
     message = completed.stdout.strip() or "Tailscale Serve is enabled."
@@ -99,10 +119,7 @@ def reset_tailscale_serve() -> TailscaleServeApplyResultOut:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tailscale CLI is not installed on this machine.")
 
     command = [binary, "serve", "reset"]
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
-    if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip() or "Failed to reset Tailscale Serve."
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+    completed = _run_checked_command(command, default_detail="Failed to reset Tailscale Serve.")
 
     return TailscaleServeApplyResultOut(
         success=True,
@@ -136,6 +153,14 @@ def _run_json_command(command: list[str]) -> dict:
     except json.JSONDecodeError:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _run_checked_command(command: list[str], *, default_detail: str) -> subprocess.CompletedProcess[str]:
+    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip() or default_detail
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+    return completed
 
 
 def _string_or_none(value: object) -> str | None:

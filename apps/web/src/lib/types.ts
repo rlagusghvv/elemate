@@ -414,6 +414,7 @@ export interface DesktopBridgeApi {
   openSystemPreferences: (pane: "accessibility" | "screen") => Promise<boolean>;
   openChatLogin: () => Promise<boolean>;
   openRemoteAccessApp: () => Promise<boolean>;
+  relaunchApp: () => Promise<boolean>;
   installBackgroundAgent: () => Promise<DesktopDaemonStatus>;
   uninstallBackgroundAgent: () => Promise<DesktopDaemonStatus>;
   runTerminalCommand: (command: string) => Promise<boolean>;
@@ -454,7 +455,10 @@ export interface TailscaleStatus {
   cli_available: boolean;
   cli_path: string | null;
   logged_in: boolean;
+  service_running: boolean;
+  has_node_key: boolean;
   backend_state: string | null;
+  auth_url: string | null;
   self_dns_name: string | null;
   current_tailnet: string | null;
   current_user_login: string | null;

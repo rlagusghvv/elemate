@@ -17,6 +17,10 @@ TAILSCALE_HEADERS = [
     "Tailscale-User-Profile-Pic",
 ]
 TAILSCALE_SCRIPT_PATH = SCRIPTS_DIR / "setup_tailscale_serve.sh"
+TAILSCALE_DESKTOP_INSTALL_URL = "https://tailscale.com/download"
+TAILSCALE_MOBILE_INSTALL_URL = "https://tailscale.com/download"
+TAILSCALE_IOS_INSTALL_URL = "https://tailscale.com/download/ios"
+TAILSCALE_ANDROID_INSTALL_URL = "https://tailscale.com/download/android"
 
 
 def get_tailscale_status() -> TailscaleStatusOut:
@@ -25,6 +29,10 @@ def get_tailscale_status() -> TailscaleStatusOut:
         return TailscaleStatusOut(
             cli_available=False,
             cli_path=None,
+            desktop_install_url=TAILSCALE_DESKTOP_INSTALL_URL,
+            mobile_install_url=TAILSCALE_MOBILE_INSTALL_URL,
+            ios_install_url=TAILSCALE_IOS_INSTALL_URL,
+            android_install_url=TAILSCALE_ANDROID_INSTALL_URL,
             logged_in=False,
             service_running=False,
             has_node_key=False,
@@ -63,6 +71,10 @@ def get_tailscale_status() -> TailscaleStatusOut:
     return TailscaleStatusOut(
         cli_available=True,
         cli_path=binary,
+        desktop_install_url=TAILSCALE_DESKTOP_INSTALL_URL,
+        mobile_install_url=TAILSCALE_MOBILE_INSTALL_URL,
+        ios_install_url=TAILSCALE_IOS_INSTALL_URL,
+        android_install_url=TAILSCALE_ANDROID_INSTALL_URL,
         logged_in=logged_in,
         service_running=service_running,
         has_node_key=has_node_key,

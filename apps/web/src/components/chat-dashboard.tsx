@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   enableTailscaleServe,
@@ -55,11 +55,6 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     }, 3200);
   }
 
-  async function refreshAll() {
-    await refreshDesktopStatus();
-    await refreshDashboard();
-  }
-
   useEffect(() => {
     const savedWorkspace = window.localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_WORKSPACE_STORAGE_KEY);
     if (savedWorkspace) {
@@ -67,51 +62,6 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
       window.localStorage.setItem(WORKSPACE_STORAGE_KEY, savedWorkspace);
     }
   }, []);
-
-  useEffect(() => {
-    void (async () => {
-      await refreshAll();
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (variant !== "local") {
-      return;
-    }
-    const runtimeStatus = desktopStatus?.runtime?.api.status;
-    const authStatus = desktopStatus?.runtime?.auth.status;
-    const shouldPollRuntime = Boolean(runtimeStatus && ["installing", "starting"].includes(runtimeStatus));
-    const shouldPollAuth = Boolean(authStatus && ["starting", "waiting_browser"].includes(authStatus));
-    if (!shouldPollRuntime && !shouldPollAuth) {
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      void refreshAll();
-    }, 3000);
-
-    return () => window.clearInterval(timer);
-  }, [desktopStatus?.runtime?.api.status, desktopStatus?.runtime?.auth.status, variant]);
-
-  useEffect(() => {
-    if (variant !== "local") {
-      return;
-    }
-    const handleWake = () => {
-      void refreshAll();
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        handleWake();
-      }
-    };
-    window.addEventListener("focus", handleWake);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      window.removeEventListener("focus", handleWake);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [variant]);
 
   useEffect(() => {
     const authReady = Boolean(onboarding?.auth_ready);
@@ -174,7 +124,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     return error.message.replace(/^Error invoking remote method '[^']+':\s*Error:\s*/u, "").trim() || fallback;
   }
 
-  async function refreshDashboard() {
+  const refreshDashboard = useCallback(async () => {
     setError(null);
     try {
       const [nextOnboarding, nextPortal, nextTailscale] = await Promise.all([
@@ -205,9 +155,9 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
       }
       setError(loadError instanceof Error ? loadError.message : "상태를 불러오지 못했습니다.");
     }
-  }
+  }, []);
 
-  async function refreshDesktopStatus() {
+  const refreshDesktopStatus = useCallback(async () => {
     const desktopBridge = window.elemateDesktop ?? window.forgeDesktop;
     if (!desktopBridge) {
       return;
@@ -217,7 +167,55 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     } catch {
       setDesktopStatus(null);
     }
-  }
+  }, []);
+
+  const refreshAll = useCallback(async () => {
+    await refreshDesktopStatus();
+    await refreshDashboard();
+  }, [refreshDashboard, refreshDesktopStatus]);
+
+  useEffect(() => {
+    void refreshAll();
+  }, [refreshAll]);
+
+  useEffect(() => {
+    if (variant !== "local") {
+      return;
+    }
+    const runtimeStatus = desktopStatus?.runtime?.api.status;
+    const authStatus = desktopStatus?.runtime?.auth.status;
+    const shouldPollRuntime = Boolean(runtimeStatus && ["installing", "starting"].includes(runtimeStatus));
+    const shouldPollAuth = Boolean(authStatus && ["starting", "waiting_browser"].includes(authStatus));
+    if (!shouldPollRuntime && !shouldPollAuth) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void refreshAll();
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+  }, [desktopStatus?.runtime?.api.status, desktopStatus?.runtime?.auth.status, refreshAll, variant]);
+
+  useEffect(() => {
+    if (variant !== "local") {
+      return;
+    }
+    const handleWake = () => {
+      void refreshAll();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        handleWake();
+      }
+    };
+    window.addEventListener("focus", handleWake);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", handleWake);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshAll, variant]);
 
   async function handleWorkspacePick(path: string) {
     setIsBusy(true);

@@ -454,6 +454,10 @@ export interface PortalUpdateInput {
 export interface TailscaleStatus {
   cli_available: boolean;
   cli_path: string | null;
+  desktop_install_url: string;
+  mobile_install_url: string;
+  ios_install_url: string;
+  android_install_url: string;
   logged_in: boolean;
   service_running: boolean;
   has_node_key: boolean;

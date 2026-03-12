@@ -383,6 +383,10 @@ class PortalOut(BaseModel):
 class TailscaleStatusOut(BaseModel):
     cli_available: bool
     cli_path: str | None
+    desktop_install_url: str
+    mobile_install_url: str
+    ios_install_url: str
+    android_install_url: str
     logged_in: bool
     service_running: bool
     has_node_key: bool

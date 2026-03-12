@@ -61,6 +61,7 @@ export function SetupWizard({
 }: SetupWizardProps) {
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [mobileSetupQrDataUrl, setMobileSetupQrDataUrl] = useState<string | null>(null);
 
   const selectedWorkspace = workspacePath || onboarding?.workspace_path || "";
   const linkValue = portal?.portal_url || tailscaleStatus?.serve_url || null;
@@ -69,6 +70,7 @@ export function SetupWizard({
   const remoteReady = Boolean(tailscaleStatus?.serve_enabled);
   const remoteLoggedIn = Boolean(tailscaleStatus?.logged_in);
   const remoteRunning = Boolean(tailscaleStatus?.service_running);
+  const remoteAppInstalled = Boolean(tailscaleStatus?.cli_available);
   const bundledRuntime = desktopStatus?.runtime?.mode === "bundled" ? desktopStatus.runtime : null;
   const runtimeReady = !bundledRuntime || bundledRuntime.api.status === "ready";
   const runtimeBusy = bundledRuntime ? bundledRuntime.api.status === "installing" || bundledRuntime.api.status === "starting" : false;
@@ -108,6 +110,38 @@ export function SetupWizard({
     };
   }, [linkValue, remoteReady]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const mobileInstallUrl = tailscaleStatus?.mobile_install_url;
+    if (!mobileInstallUrl || remoteReady) {
+      setMobileSetupQrDataUrl(null);
+      return () => {
+        isMounted = false;
+      };
+    }
+    void QRCode.toDataURL(mobileInstallUrl, {
+      margin: 0,
+      width: 220,
+      color: {
+        dark: "#F5F7FB",
+        light: "#00000000",
+      },
+    })
+      .then((value) => {
+        if (isMounted) {
+          setMobileSetupQrDataUrl(value);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setMobileSetupQrDataUrl(null);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [remoteReady, tailscaleStatus?.mobile_install_url]);
+
   const heroText = useMemo(() => {
     if (!runtimeReady) {
       return "먼저 이 장비 안에 EleMate 로컬 엔진을 준비합니다.";
@@ -117,6 +151,9 @@ export function SetupWizard({
     }
     if (!selectedWorkspace) {
       return "이제 내 파일이 들어 있는 폴더만 고르면 됩니다.";
+    }
+    if (!remoteAppInstalled) {
+      return "마지막으로 원격 연결 앱만 설치하면 됩니다.";
     }
     if (!remoteLoggedIn) {
       return "마지막으로 원격 연결 로그인만 끝내면 됩니다.";
@@ -128,7 +165,7 @@ export function SetupWizard({
       return "마지막으로 휴대폰 접속만 켜면 설정이 끝납니다.";
     }
     return "준비가 끝났습니다. 이제 휴대폰에서 바로 말을 걸면 됩니다.";
-  }, [onboarding?.auth_ready, remoteLoggedIn, remoteReady, remoteRunning, runtimeReady, selectedWorkspace]);
+  }, [onboarding?.auth_ready, remoteAppInstalled, remoteLoggedIn, remoteReady, remoteRunning, runtimeReady, selectedWorkspace]);
 
   async function copyValue(value: string | null | undefined, message: string) {
     if (!value) {
@@ -275,7 +312,9 @@ export function SetupWizard({
             <div>
               <p className="eyebrow">03 휴대폰 연결</p>
               <p className="ui-title-card mt-3">
-                {!remoteLoggedIn
+                {!remoteAppInstalled
+                  ? "원격 연결 앱 설치"
+                  : !remoteLoggedIn
                   ? "원격 연결 로그인"
                   : !remoteRunning
                     ? "원격 연결 다시 켜기"
@@ -284,7 +323,9 @@ export function SetupWizard({
                     : "휴대폰 접속 켜기"}
               </p>
               <p className="ui-copy-sm mt-3 break-all">
-                {!remoteLoggedIn
+                {!remoteAppInstalled
+                  ? "이 장비에 원격 연결 앱이 아직 없습니다. 버튼을 누르면 설치 페이지를 열고, 설치 후 다시 확인하면 됩니다."
+                  : !remoteLoggedIn
                   ? "원격 연결 버튼을 누르면 로그인 흐름을 직접 시작합니다. 로그인과 허용을 마친 뒤 이 창으로 돌아오면 상태를 다시 읽습니다."
                   : !remoteRunning
                     ? "이 장비는 이미 내 원격 연결 계정에 묶여 있지만 현재 연결이 꺼져 있습니다. 버튼을 누르면 다시 연결을 시작합니다."
@@ -298,6 +339,9 @@ export function SetupWizard({
                 </p>
               )}
               <div className="mt-3 flex flex-wrap gap-2">
+                <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(remoteAppInstalled)}`}>
+                  Mac 앱 {remoteAppInstalled ? "설치됨" : "설치 필요"}
+                </span>
                 <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(accessibilityGranted)}`}>
                   제어 권한 {accessibilityGranted ? "허용됨" : "확인 필요"}
                 </span>
@@ -305,6 +349,11 @@ export function SetupWizard({
                   화면 권한 {screenGranted ? "허용됨" : "확인 필요"}
                 </span>
               </div>
+              {!remoteReady ? (
+                <p className="ui-copy-sm mt-3 text-white/62">
+                  휴대폰에도 Tailscale 앱을 설치하고 같은 계정으로 로그인해야 합니다. 아래 QR로 바로 설치 페이지를 열 수 있습니다.
+                </p>
+              ) : null}
               {!accessibilityGranted || !screenGranted ? (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {!accessibilityGranted ? (
@@ -348,7 +397,7 @@ export function SetupWizard({
           <div className="mt-5 flex flex-wrap gap-2">
             {!remoteLoggedIn || !remoteRunning ? (
               <button type="button" onClick={onOpenRemoteAccessApp} className="ui-button-secondary px-4 py-2.5">
-                {!remoteLoggedIn ? "원격 연결 로그인 시작" : "원격 연결 다시 켜기"}
+                {!remoteAppInstalled ? "원격 연결 앱 설치" : !remoteLoggedIn ? "원격 연결 로그인 시작" : "원격 연결 다시 켜기"}
               </button>
             ) : null}
             {!remoteLoggedIn || !remoteRunning ? (
@@ -366,6 +415,15 @@ export function SetupWizard({
                 휴대폰 접속 켜기
               </button>
             ) : null}
+            {!remoteReady && tailscaleStatus?.mobile_install_url ? (
+              <button
+                type="button"
+                onClick={() => void copyValue(tailscaleStatus.mobile_install_url, "휴대폰용 설치 링크를 복사했습니다.")}
+                className="ui-button-secondary px-4 py-2.5"
+              >
+                휴대폰 설치 링크 복사
+              </button>
+            ) : null}
             {remoteReady ? (
               <button type="button" onClick={() => void copyValue(linkValue, "내 접속 링크를 복사했습니다.")} className="ui-button-primary px-4 py-2.5">
                 접속 링크 복사
@@ -378,6 +436,16 @@ export function SetupWizard({
                 <img src={qrDataUrl} alt="EleMate phone access QR code" className="h-[180px] w-[180px]" />
                 <p className="ui-copy-sm max-w-[28ch] text-white/72">
                   휴대폰 카메라로 스캔하면 바로 내 에이전트 대화창이 열립니다.
+                </p>
+              </div>
+            </div>
+          ) : null}
+          {!remoteReady && mobileSetupQrDataUrl ? (
+            <div className="mt-5 rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <img src={mobileSetupQrDataUrl} alt="Tailscale mobile install QR code" className="h-[180px] w-[180px]" />
+                <p className="ui-copy-sm max-w-[30ch] text-white/72">
+                  휴대폰으로 스캔해서 Tailscale 앱을 설치한 뒤, 이 Mac과 같은 계정으로 로그인하세요.
                 </p>
               </div>
             </div>

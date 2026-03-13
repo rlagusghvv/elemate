@@ -336,9 +336,11 @@ export interface OnboardingStatus {
   is_complete: boolean;
   completed_at: string | null;
   workspace_path: string | null;
+  remote_origin: string | null;
   codex_login_required: boolean;
   auth_ready: boolean;
   workspace_ready: boolean;
+  workspace_access_ready: boolean;
   browser_ready: boolean;
   launch_ready: boolean;
   selected_mode: string;
@@ -355,6 +357,8 @@ export interface OnboardingStatus {
 
 export interface OnboardingUpdateInput {
   workspace_path?: string | null;
+  workspace_access_ready?: boolean | null;
+  remote_origin?: string | null;
   mark_complete?: boolean | null;
 }
 
@@ -363,6 +367,15 @@ export interface DesktopPermissionStatus {
   screen: string;
   microphone: string;
   camera: string;
+}
+
+export type DesktopPermissionPane = "accessibility" | "screen" | "files" | "all-files";
+
+export interface DesktopWorkspaceAccessCheckResult {
+  granted: boolean;
+  path: string;
+  detail: string;
+  suggested_pane: "files" | "all-files" | null;
 }
 
 export interface DesktopBridgeStatus {
@@ -409,9 +422,10 @@ export interface DesktopBridgeApi {
   installLocalRuntime: () => Promise<DesktopBridgeStatus>;
   restartLocalServices: () => Promise<DesktopBridgeStatus>;
   chooseDirectory: () => Promise<string | null>;
+  checkWorkspaceAccess: (targetPath: string) => Promise<DesktopWorkspaceAccessCheckResult>;
   promptAccessibility: () => Promise<boolean>;
   promptScreenAccess: () => Promise<string>;
-  openSystemPreferences: (pane: "accessibility" | "screen") => Promise<boolean>;
+  openSystemPreferences: (pane: DesktopPermissionPane) => Promise<boolean>;
   openChatLogin: () => Promise<boolean>;
   openRemoteAccessApp: () => Promise<boolean>;
   relaunchApp: () => Promise<boolean>;
@@ -426,6 +440,9 @@ export interface DesktopRuntimeStatus {
   support_dir: string | null;
   data_dir: string | null;
   logs_dir: string | null;
+  app_version: string;
+  runtime_generated_at: string | null;
+  runtime_fingerprint: string | null;
   auth: DesktopAuthStatus;
   web: DesktopRuntimeProcessStatus;
   api: DesktopRuntimeProcessStatus;
@@ -458,13 +475,18 @@ export interface TailscaleStatus {
   mobile_install_url: string;
   ios_install_url: string;
   android_install_url: string;
+  status_readable: boolean;
+  status_message: string | null;
   logged_in: boolean;
   service_running: boolean;
   has_node_key: boolean;
   backend_state: string | null;
   auth_url: string | null;
+  self_id: string | null;
   self_dns_name: string | null;
   current_tailnet: string | null;
+  suggested_device_name: string | null;
+  suggested_device_name_source: "tailscale" | "hostname" | null;
   current_user_login: string | null;
   current_user_name: string | null;
   serve_enabled: boolean;
@@ -481,4 +503,5 @@ export interface TailscaleServeApplyResult {
   message: string;
   command: string;
   serve_url: string | null;
+  approval_url: string | null;
 }

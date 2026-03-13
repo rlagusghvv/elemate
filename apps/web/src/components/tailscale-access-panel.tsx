@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { resolvePortalLink } from "@/lib/portal-links";
 import type { Portal, TailscaleStatus } from "@/lib/types";
 
 interface TailscaleAccessPanelProps {
@@ -22,6 +23,7 @@ export function TailscaleAccessPanel({
   onResetServe,
 }: TailscaleAccessPanelProps) {
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const portalLink = resolvePortalLink(portal, tailscaleStatus);
 
   async function copyValue(value: string | null | undefined, successMessage: string) {
     if (!value) {
@@ -63,7 +65,7 @@ export function TailscaleAccessPanel({
           </div>
           <div className="soft-card rounded-[22px] bg-white/[0.04] p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-steel">Portal URL</p>
-            <p className="mt-3 break-all text-sm font-semibold leading-6 text-ink">{portal?.portal_url || "Serve 활성화 후 자동 생성"}</p>
+            <p className="mt-3 break-all text-sm font-semibold leading-6 text-ink">{portalLink || "Serve 활성화 후 자동 생성"}</p>
             <p className="mt-2 text-sm leading-6 text-steel">{portal ? `${portal.session_count}개의 개인 대화 세션` : "포털 생성 전"}</p>
           </div>
           <div className="soft-card rounded-[22px] bg-white/[0.04] p-4">
@@ -102,8 +104,8 @@ export function TailscaleAccessPanel({
             </button>
             <button
               type="button"
-              onClick={() => void copyValue(portal?.portal_url, "포털 URL을 복사했습니다.")}
-              disabled={!portal?.portal_url}
+              onClick={() => void copyValue(portalLink, "포털 URL을 복사했습니다.")}
+              disabled={!portalLink}
               className="rounded-full border border-white/12 bg-white/[0.05] px-4 py-2 text-sm font-medium text-ink transition hover:border-white/20 hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-45"
             >
               내 창구 URL 복사

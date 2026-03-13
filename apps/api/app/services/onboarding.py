@@ -17,10 +17,12 @@ def get_onboarding_status() -> OnboardingStatusOut:
     runtime = get_runtime_status()
     state = _read_state()
     workspace_path = _load_workspace_path(state, runtime.workspace_root)
+    remote_origin = _load_remote_origin(state)
     auth_ready = runtime.codex_login_configured
     workspace_ready = workspace_path is not None
+    workspace_access_ready = bool(state.get("workspace_access_ready")) and workspace_ready
     browser_ready = runtime.browser_available
-    launch_ready = auth_ready and workspace_ready
+    launch_ready = auth_ready and workspace_ready and workspace_access_ready
     completed_at = _parse_datetime(state.get("completed_at"))
     is_complete = bool(state.get("is_complete")) and launch_ready
 
@@ -39,9 +41,15 @@ def get_onboarding_status() -> OnboardingStatusOut:
         OnboardingStepOut(
             key="workspace",
             title="내 폴더 연결",
-            description="에이전트가 읽고 수정할 폴더를 지정합니다.",
-            status="done" if workspace_ready else "ready",
-            detail=workspace_path or "아직 작업 폴더를 고르지 않았습니다.",
+            description="에이전트가 읽고 수정할 폴더를 지정하고, 실제 접근 허용까지 확인합니다.",
+            status="done" if workspace_access_ready else "blocked" if workspace_ready else "ready",
+            detail=(
+                workspace_path
+                if workspace_access_ready
+                else f"{workspace_path} · 폴더는 골랐지만 실제 접근 허용 확인이 아직 끝나지 않았습니다."
+                if workspace_ready
+                else "아직 작업 폴더를 고르지 않았습니다."
+            ),
         ),
         OnboardingStepOut(
             key="browser",
@@ -57,9 +65,13 @@ def get_onboarding_status() -> OnboardingStatusOut:
         OnboardingStepOut(
             key="launch",
             title="채팅 시작",
-            description="AI 연결과 폴더 선택이 끝나면 바로 채팅으로 일을 맡길 수 있습니다.",
+            description="AI 연결, 폴더 선택, 폴더 접근 확인이 끝나면 바로 채팅으로 일을 맡길 수 있습니다.",
             status="done" if launch_ready else "blocked",
-            detail="기본 연결이 끝나면 채팅창에서 바로 대화를 시작할 수 있습니다." if launch_ready else "아직 기본 연결이 끝나지 않았습니다.",
+            detail=(
+                "기본 연결이 끝나면 채팅창에서 바로 대화를 시작할 수 있습니다."
+                if launch_ready
+                else "아직 기본 연결이 끝나지 않았습니다."
+            ),
         ),
     ]
 
@@ -67,9 +79,11 @@ def get_onboarding_status() -> OnboardingStatusOut:
         is_complete=is_complete,
         completed_at=completed_at,
         workspace_path=workspace_path,
+        remote_origin=remote_origin,
         codex_login_required=True,
         auth_ready=auth_ready,
         workspace_ready=workspace_ready,
+        workspace_access_ready=workspace_access_ready,
         browser_ready=browser_ready,
         launch_ready=launch_ready,
         selected_mode=runtime.selected_mode,
@@ -92,6 +106,14 @@ def update_onboarding_status(payload: OnboardingUpdate) -> OnboardingStatusOut:
     if payload.workspace_path is not None:
         workspace_path = payload.workspace_path.strip()
         state["workspace_path"] = _validate_workspace_path(workspace_path, runtime.workspace_root) if workspace_path else None
+        state["workspace_access_ready"] = False
+
+    if payload.workspace_access_ready is not None:
+        state["workspace_access_ready"] = bool(payload.workspace_access_ready) and bool(state.get("workspace_path"))
+
+    if payload.remote_origin is not None:
+        remote_origin = payload.remote_origin.strip()
+        state["remote_origin"] = _normalize_remote_origin(remote_origin) if remote_origin else None
 
     status_payload = _build_status_from_state(state, runtime.workspace_root)
 
@@ -100,7 +122,7 @@ def update_onboarding_status(payload: OnboardingUpdate) -> OnboardingStatusOut:
             if not status_payload.launch_ready:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="ChatGPT 로그인과 작업 폴더 연결이 끝나야 초기 설정을 완료할 수 있습니다.",
+                    detail="AI 연결, 작업 폴더 선택, 폴더 접근 확인이 끝나야 초기 설정을 완료할 수 있습니다.",
                 )
             state["is_complete"] = True
             state["completed_at"] = datetime.now(UTC).isoformat()
@@ -115,18 +137,22 @@ def update_onboarding_status(payload: OnboardingUpdate) -> OnboardingStatusOut:
 def _build_status_from_state(state: dict, workspace_root: str) -> OnboardingStatusOut:
     runtime = get_runtime_status()
     workspace_path = _load_workspace_path(state, workspace_root)
+    remote_origin = _load_remote_origin(state)
     auth_ready = runtime.codex_login_configured
     workspace_ready = workspace_path is not None
+    workspace_access_ready = bool(state.get("workspace_access_ready")) and workspace_ready
     browser_ready = runtime.browser_available
-    launch_ready = auth_ready and workspace_ready
+    launch_ready = auth_ready and workspace_ready and workspace_access_ready
     completed_at = _parse_datetime(state.get("completed_at"))
     return OnboardingStatusOut(
         is_complete=bool(state.get("is_complete")) and launch_ready,
         completed_at=completed_at,
         workspace_path=workspace_path,
+        remote_origin=remote_origin,
         codex_login_required=True,
         auth_ready=auth_ready,
         workspace_ready=workspace_ready,
+        workspace_access_ready=workspace_access_ready,
         browser_ready=browser_ready,
         launch_ready=launch_ready,
         selected_mode=runtime.selected_mode,
@@ -170,6 +196,20 @@ def _load_workspace_path(state: dict, workspace_root: str) -> str | None:
         return None
 
 
+def get_manual_remote_origin() -> str | None:
+    return _load_remote_origin(_read_state())
+
+
+def _load_remote_origin(state: dict) -> str | None:
+    raw = state.get("remote_origin")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        return _normalize_remote_origin(raw)
+    except HTTPException:
+        return None
+
+
 def _validate_workspace_path(raw_path: str, workspace_root: str) -> str:
     candidate = Path(raw_path).expanduser().resolve()
     allowed_roots = [Path.home().resolve(), Path(workspace_root).expanduser().resolve()]
@@ -188,6 +228,39 @@ def _validate_workspace_path(raw_path: str, workspace_root: str) -> str:
     if not candidate.is_dir():
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="작업 폴더는 디렉터리여야 합니다.")
     return str(candidate)
+
+
+def _normalize_remote_origin(raw_value: str) -> str:
+    candidate = raw_value.strip()
+    if not candidate:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="원격 접속 주소가 비어 있습니다.")
+    if "://" not in candidate:
+        candidate = f"https://{candidate}"
+
+    import ipaddress
+    from urllib.parse import urlparse
+
+    parsed = urlparse(candidate)
+    if parsed.scheme not in {"https", "http"} or not parsed.netloc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="원격 접속 주소 형식이 올바르지 않습니다. 예: https://my-mac.example.ts.net",
+        )
+    if parsed.hostname in {"127.0.0.1", "localhost", "0.0.0.0", "::1"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="휴대폰 접속 주소에는 localhost나 127.0.0.1을 사용할 수 없습니다. 예: https://my-mac.example.ts.net",
+        )
+    try:
+        ipaddress.ip_address(parsed.hostname or "")
+    except ValueError:
+        pass
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="휴대폰 접속 주소에는 Tailscale IP가 아니라 기기 전체 주소를 사용해야 합니다. 예: https://macmini.tail4fbf54.ts.net",
+        )
+    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
 
 
 def _parse_datetime(value: object) -> datetime | None:

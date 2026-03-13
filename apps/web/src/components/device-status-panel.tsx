@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import QRCode from "qrcode";
 
 import { ElephantMascot } from "@/components/elephant-mascot";
+import { resolvePortalLink } from "@/lib/portal-links";
 import type { DesktopBridgeStatus, OnboardingStatus, Portal, TailscaleStatus } from "@/lib/types";
 
 interface DeviceStatusPanelProps {
@@ -15,6 +17,8 @@ interface DeviceStatusPanelProps {
   error: string | null;
   onOpenWorkspacePicker: () => void;
   onOpenRemoteAccessApp: () => void;
+  onStartRemoteAccessFlow: () => void;
+  onEnableRemoteAccess: () => void;
   onResetRemoteAccess: () => void;
   onInstallBackgroundAgent: () => void;
   onUninstallBackgroundAgent: () => void;
@@ -36,6 +40,8 @@ export function DeviceStatusPanel({
   error,
   onOpenWorkspacePicker,
   onOpenRemoteAccessApp,
+  onStartRemoteAccessFlow,
+  onEnableRemoteAccess,
   onResetRemoteAccess,
   onInstallBackgroundAgent,
   onUninstallBackgroundAgent,
@@ -43,9 +49,42 @@ export function DeviceStatusPanel({
   onOpenSystemPreferences,
 }: DeviceStatusPanelProps) {
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const selectedWorkspace = workspacePath || onboarding?.workspace_path || "";
-  const linkValue = portal?.portal_url || tailscaleStatus?.serve_url || null;
+  const linkValue = resolvePortalLink(portal, tailscaleStatus);
+  const remoteLinkReady = Boolean(linkValue);
   const daemonReady = Boolean(desktopStatus?.daemon.loaded);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!linkValue) {
+      setQrDataUrl(null);
+      return () => {
+        isMounted = false;
+      };
+    }
+    void QRCode.toDataURL(linkValue, {
+      margin: 0,
+      width: 220,
+      color: {
+        dark: "#F5F7FB",
+        light: "#00000000",
+      },
+    })
+      .then((value) => {
+        if (isMounted) {
+          setQrDataUrl(value);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setQrDataUrl(null);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [linkValue]);
 
   async function copyValue(value: string | null | undefined) {
     if (!value) {
@@ -59,6 +98,18 @@ export function DeviceStatusPanel({
       setCopyMessage("복사에 실패했습니다.");
       window.setTimeout(() => setCopyMessage(null), 2000);
     }
+  }
+
+  async function openLink(value: string | null | undefined) {
+    if (!value) {
+      return;
+    }
+    const desktopBridge = window.elemateDesktop ?? window.forgeDesktop;
+    if (desktopBridge?.openExternalUrl) {
+      await desktopBridge.openExternalUrl(value);
+      return;
+    }
+    window.open(value, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -77,7 +128,7 @@ export function DeviceStatusPanel({
         <div className="mt-5 flex flex-wrap gap-2">
           <span className={`ui-chip ${tone(Boolean(onboarding?.auth_ready))}`}>AI 연결됨</span>
           <span className={`ui-chip ${tone(Boolean(selectedWorkspace))}`}>폴더 연결됨</span>
-          <span className={`ui-chip ${tone(Boolean(tailscaleStatus?.serve_enabled))}`}>휴대폰 접속 가능</span>
+          <span className={`ui-chip ${tone(remoteLinkReady)}`}>휴대폰 접속 가능</span>
         </div>
       </div>
 
@@ -107,6 +158,24 @@ export function DeviceStatusPanel({
             <button type="button" onClick={onOpenRemoteAccessApp} className="ui-button-secondary px-4 py-2.5">
               원격 연결 앱 열기
             </button>
+            {tailscaleStatus?.status_readable && !tailscaleStatus?.logged_in ? (
+              <button type="button" onClick={onStartRemoteAccessFlow} className="ui-button-secondary px-4 py-2.5">
+                원격 연결 로그인 시작
+              </button>
+            ) : null}
+            {tailscaleStatus?.status_readable && tailscaleStatus?.logged_in && !tailscaleStatus?.service_running ? (
+              <button type="button" onClick={onStartRemoteAccessFlow} className="ui-button-secondary px-4 py-2.5">
+                원격 연결 다시 켜기
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onEnableRemoteAccess}
+              disabled={isBusy}
+              className="ui-button-primary px-4 py-2.5 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              휴대폰 접속 켜기
+            </button>
             <button
               type="button"
               onClick={onResetRemoteAccess}
@@ -115,7 +184,25 @@ export function DeviceStatusPanel({
             >
               링크 다시 설정
             </button>
+            <button
+              type="button"
+              onClick={() => void openLink(linkValue)}
+              disabled={!linkValue}
+              className="ui-button-secondary px-4 py-2.5 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              링크 테스트 열기
+            </button>
           </div>
+          {linkValue && qrDataUrl ? (
+            <div className="mt-5 rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <img src={qrDataUrl} alt="EleMate phone access QR code" className="h-[180px] w-[180px]" />
+                <p className="ui-copy-sm max-w-[30ch] text-white/72">
+                  휴대폰 카메라로 스캔하면 바로 내 에이전트 대화창으로 들어갑니다.
+                </p>
+              </div>
+            </div>
+          ) : null}
         </article>
 
         <article className="soft-card rounded-[24px] bg-white/[0.03] px-4 py-4">

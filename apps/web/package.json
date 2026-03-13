@@ -1,7 +1,7 @@
 {
   "name": "elemate-web",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.4",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

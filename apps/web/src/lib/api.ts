@@ -44,6 +44,17 @@ export function resolveApiUrl(path: string): string {
   return new URL(`${normalizedBase}${path}`, origin).toString();
 }
 
+function parseJsonSafely<T>(raw: string): T | null {
+  if (!raw.trim()) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const publicOrigin = typeof window !== "undefined" ? window.location.origin : undefined;
   const response = await fetch(resolveApiUrl(path), {
@@ -62,17 +73,13 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
+    const rawBody = await response.text();
+    const payload = parseJsonSafely<{ detail?: string }>(rawBody);
     let message = `Request failed: ${response.status}`;
-    try {
-      const payload = (await response.json()) as { detail?: string };
-      if (payload.detail) {
-        message = payload.detail;
-      }
-    } catch {
-      const text = await response.text();
-      if (text) {
-        message = text;
-      }
+    if (payload?.detail) {
+      message = payload.detail;
+    } else if (rawBody.trim()) {
+      message = rawBody;
     }
     throw new Error(message);
   }
@@ -86,7 +93,15 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     return undefined as T;
   }
 
-  return (await response.json()) as T;
+  const rawBody = await response.text();
+  if (!rawBody.trim()) {
+    return undefined as T;
+  }
+  const payload = parseJsonSafely<T>(rawBody);
+  if (payload !== null) {
+    return payload;
+  }
+  throw new Error("Response body was not valid JSON.");
 }
 
 export function fetchCapabilities(): Promise<Capabilities> {

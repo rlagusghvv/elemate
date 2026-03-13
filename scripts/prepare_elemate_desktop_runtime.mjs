@@ -170,6 +170,44 @@ function copyCodexRuntime() {
       "Codex 플랫폼 런타임을 찾지 못했습니다. `npm install`로 @openai/codex-darwin-arm64 와 @openai/codex-darwin-x64를 함께 설치하세요.",
     );
   }
+
+  const launcherPath = path.join(runtimeCodexDir, "bin", "codex");
+  const launcherContents = `#!/bin/sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+RUNTIME_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+ARCH=$(uname -m)
+
+case "$ARCH" in
+  arm64|aarch64)
+    TARGET="aarch64-apple-darwin"
+    ;;
+  x86_64)
+    TARGET="x86_64-apple-darwin"
+    ;;
+  *)
+    echo "Unsupported architecture: $ARCH" >&2
+    exit 1
+    ;;
+esac
+
+CODEX_BIN="$RUNTIME_ROOT/vendor/$TARGET/codex/codex"
+RG_DIR="$RUNTIME_ROOT/vendor/$TARGET/path"
+
+if [ ! -x "$CODEX_BIN" ]; then
+  echo "Bundled Codex binary not found: $CODEX_BIN" >&2
+  exit 1
+fi
+
+if [ -d "$RG_DIR" ]; then
+  export PATH="$RG_DIR${process.platform === "win32" ? ";" : ":"}$PATH"
+fi
+
+exec "$CODEX_BIN" "$@"
+`;
+  fs.writeFileSync(launcherPath, launcherContents, "utf8");
+  fs.chmodSync(launcherPath, 0o755);
 }
 
 function archiveCodexRuntime() {

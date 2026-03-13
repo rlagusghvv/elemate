@@ -15,6 +15,30 @@ function runOrThrow(command, args, label) {
   throw new Error(`${label} failed: ${stderr.trim()}`);
 }
 
+function sleepSync(seconds) {
+  spawnSync("/bin/sleep", [String(seconds)], {
+    stdio: "ignore",
+  });
+}
+
+function runCodesignWithRetry(args, label) {
+  const maxAttempts = 4;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      runOrThrow("/usr/bin/codesign", args, label);
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const retryable = message.includes("The timestamp service is not available.");
+      if (!retryable || attempt === maxAttempts) {
+        throw error;
+      }
+      console.log(`${label} timestamp lookup failed (attempt ${attempt}/${maxAttempts}); retrying...`);
+      sleepSync(3);
+    }
+  }
+}
+
 function findDeveloperIdIdentity() {
   const keychainPath = process.env.ELEMATE_CODESIGN_KEYCHAIN;
   const args = ["/usr/bin/security", "find-identity", "-v", "-p", "codesigning"];
@@ -98,11 +122,7 @@ function signArchive(archivePath, label, identity, keychainPath) {
         args.push("--keychain", keychainPath);
       }
       args.push("--timestamp", "--options", "runtime", target);
-      runOrThrow(
-        "/usr/bin/codesign",
-        args,
-        `codesign ${path.relative(extractedDir, target)}`,
-      );
+      runCodesignWithRetry(args, `codesign ${path.relative(extractedDir, target)}`);
     }
 
     fs.rmSync(archivePath, { force: true });
@@ -117,8 +137,8 @@ module.exports = async function signBundledPythonArchive(context) {
     return;
   }
 
-  if (process.env.CI !== "true" && String(process.env.ELEMATE_SIGN_BUNDLED_PYTHON || "false").toLowerCase() !== "true") {
-    console.log("Skipping bundled Python archive signing outside CI.");
+  if (String(process.env.ELEMATE_SIGN_BUNDLED_PYTHON || "true").toLowerCase() === "false") {
+    console.log("Skipping bundled runtime archive signing: ELEMATE_SIGN_BUNDLED_PYTHON=false");
     return;
   }
 

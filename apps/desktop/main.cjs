@@ -1,5 +1,6 @@
-const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell, systemPreferences } = require("electron");
+const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, session, shell, systemPreferences } = require("electron");
 const { spawn, spawnSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -50,6 +51,9 @@ let runtimeState = {
   support_dir: null,
   data_dir: null,
   logs_dir: null,
+  app_version: app.getVersion(),
+  runtime_generated_at: null,
+  runtime_fingerprint: null,
   auth: {
     status: "idle",
     message: null,
@@ -80,6 +84,7 @@ function getPackagedPaths() {
   const root = path.join(app.getPath("userData"), "local-runtime");
   return {
     root,
+    installStatePath: path.join(app.getPath("userData"), "install-state.json"),
     dataDir: path.join(root, "data"),
     logsDir: path.join(root, "logs"),
     authLogPath: path.join(root, "logs", "auth-login.log"),
@@ -106,12 +111,86 @@ function getPackagedPaths() {
   };
 }
 
+function getPackagedVersionFingerprint(paths) {
+  const runtimeManifest = readJsonFile(paths.packagedManifestPath);
+  const pythonManifest = readJsonFile(paths.packagedPythonManifestPath);
+  const manifestSha256 = hashFile(paths.packagedManifestPath);
+  const webArchiveSha256 = hashFile(paths.webArchivePath);
+  const pythonArchiveSha256 = hashFile(paths.pythonArchivePath);
+  const codexArchiveSha256 = hashFile(paths.codexArchivePath);
+  return {
+    app_version: app.getVersion(),
+    runtime_generated_at: runtimeManifest?.generated_at || null,
+    python_generated_at: pythonManifest?.generated_at || null,
+    runtime_fingerprint: [
+      app.getVersion(),
+      runtimeManifest?.generated_at || "no-runtime-manifest",
+      pythonManifest?.generated_at || "no-python-manifest",
+      manifestSha256 || "no-manifest-sha",
+      webArchiveSha256 || "no-web-sha",
+      pythonArchiveSha256 || "no-python-sha",
+      codexArchiveSha256 || "no-codex-sha",
+    ].join(":"),
+  };
+}
+
+function clearPackagedVolatileState(paths) {
+  for (const target of [
+    paths.webDir,
+    paths.pythonDir,
+    paths.codexDir,
+    paths.venvDir,
+    paths.webManifestPath,
+    paths.pythonManifestPath,
+    paths.bootstrapPath,
+    path.join(paths.dataDir, "onboarding_state.json"),
+  ]) {
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+}
+
+async function performPackagedUpgradeMaintenance() {
+  if (!app.isPackaged) {
+    return;
+  }
+
+  const paths = getPackagedPaths();
+  const previous = readJsonFile(paths.installStatePath);
+  const current = getPackagedVersionFingerprint(paths);
+  const needsReset =
+    !previous ||
+    previous.app_version !== current.app_version ||
+    previous.runtime_generated_at !== current.runtime_generated_at ||
+    previous.python_generated_at !== current.python_generated_at ||
+    previous.runtime_fingerprint !== current.runtime_fingerprint;
+
+  if (!needsReset) {
+    return;
+  }
+
+  clearPackagedVolatileState(paths);
+  try {
+    await session.defaultSession.clearCache();
+    await session.defaultSession.clearStorageData({
+      storages: ["cachestorage", "cookies", "filesystem", "indexdb", "localstorage", "serviceworkers", "websql"],
+    });
+  } catch {
+    // Cache cleanup is best-effort; the app can still continue with a fresh runtime extract.
+  }
+  writeJsonFile(paths.installStatePath, {
+    ...current,
+    migrated_at: new Date().toISOString(),
+  });
+}
+
 function refreshRuntimePaths() {
   if (!app.isPackaged) {
     return;
   }
   const paths = getPackagedPaths();
   const bootstrap = readJsonFile(paths.bootstrapPath);
+  const installState = readJsonFile(paths.installStatePath);
+  const runtimeManifest = readJsonFile(paths.packagedManifestPath);
   const bundledPython = getPackagedPythonCommand(paths);
   const bundledPythonManifest = readJsonFile(paths.pythonManifestPath) || readJsonFile(paths.packagedPythonManifestPath);
   runtimeState = {
@@ -119,6 +198,9 @@ function refreshRuntimePaths() {
     support_dir: paths.root,
     data_dir: paths.dataDir,
     logs_dir: paths.logsDir,
+    app_version: installState?.app_version || app.getVersion(),
+    runtime_generated_at: installState?.runtime_generated_at || runtimeManifest?.generated_at || null,
+    runtime_fingerprint: installState?.runtime_fingerprint || null,
     auth: {
       ...runtimeState.auth,
       cli_available: Boolean((paths.codexArchivePath && fs.existsSync(paths.codexArchivePath)) || findExecutable("codex")),
@@ -198,6 +280,15 @@ function readJsonFile(filePath) {
   } catch {
     return null;
   }
+}
+
+function hashFile(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return null;
+  }
+  const hash = crypto.createHash("sha256");
+  hash.update(fs.readFileSync(filePath));
+  return hash.digest("hex");
 }
 
 function getAuthLogPath() {
@@ -298,8 +389,21 @@ function spawnApiServer() {
 }
 
 function packagedApiEnvironment(paths) {
+  const pathEntries = [];
+  const codexBinDir = path.join(paths.codexDir, "bin");
+  const pythonBinDir = path.join(paths.pythonDir, "bin");
+  if (fs.existsSync(codexBinDir)) {
+    pathEntries.push(codexBinDir);
+  }
+  if (fs.existsSync(pythonBinDir)) {
+    pathEntries.push(pythonBinDir);
+  }
+  if (process.env.PATH) {
+    pathEntries.push(process.env.PATH);
+  }
   return {
     ...process.env,
+    PATH: pathEntries.join(":"),
     DATABASE_URL: `sqlite:///${path.join(paths.dataDir, "elemate.db")}`,
     ELEMATE_BASE_DIR: paths.root,
     ELEMATE_DATA_DIR: paths.dataDir,
@@ -333,7 +437,7 @@ function getPackagedCodexEntry(paths) {
   if (!paths.codexDir) {
     return null;
   }
-  const candidate = path.join(paths.codexDir, "bin", "codex.js");
+  const candidate = path.join(paths.codexDir, "bin", "codex");
   return fs.existsSync(candidate) ? candidate : null;
 }
 
@@ -342,9 +446,12 @@ async function ensurePackagedPythonRuntime(paths) {
   const extractedManifest = readJsonFile(paths.pythonManifestPath);
   const extractedPython = getPackagedPythonCommand(paths);
   const archiveAvailable = Boolean(paths.pythonArchivePath && fs.existsSync(paths.pythonArchivePath));
+  const archiveSha256 = hashFile(paths.pythonArchivePath);
   const manifestMatches =
     !packagedManifest ||
-    (extractedManifest && extractedManifest.generated_at === packagedManifest.generated_at);
+    (extractedManifest &&
+      extractedManifest.generated_at === packagedManifest.generated_at &&
+      extractedManifest.archive_sha256 === archiveSha256);
 
   if (extractedPython && manifestMatches) {
     return {
@@ -380,6 +487,11 @@ async function ensurePackagedPythonRuntime(paths) {
   if (!python) {
     throw new Error("앱 안에 포함된 로컬 엔진을 풀었지만 Python 실행 파일을 찾지 못했습니다. 최신 설치 파일로 다시 설치하세요.");
   }
+
+  writeJsonFile(paths.pythonManifestPath, {
+    generated_at: packagedManifest?.generated_at || new Date().toISOString(),
+    archive_sha256: archiveSha256,
+  });
 
   return {
     python,
@@ -419,9 +531,12 @@ async function ensurePackagedWebRuntime(paths) {
   const extractedManifest = readJsonFile(paths.webManifestPath);
   const extractedReady = fs.existsSync(paths.webServerScript);
   const archiveAvailable = Boolean(paths.webArchivePath && fs.existsSync(paths.webArchivePath));
+  const archiveSha256 = hashFile(paths.webArchivePath);
   const manifestMatches =
     !packagedManifest ||
-    (extractedManifest && extractedManifest.generated_at === packagedManifest.generated_at);
+    (extractedManifest &&
+      extractedManifest.generated_at === packagedManifest.generated_at &&
+      extractedManifest.archive_sha256 === archiveSha256);
 
   if (extractedReady && manifestMatches) {
     return paths.webServerScript;
@@ -454,6 +569,7 @@ async function ensurePackagedWebRuntime(paths) {
 
   writeJsonFile(paths.webManifestPath, {
     generated_at: packagedManifest?.generated_at || new Date().toISOString(),
+    archive_sha256: archiveSha256,
   });
 
   return paths.webServerScript;
@@ -584,7 +700,9 @@ async function ensureBundledApiService(options = {}) {
 
   startingApiPromise = (async () => {
     try {
+      const paths = ensurePackagedDirectories();
       await installBundledApiRuntime(forceInstall);
+      await ensurePackagedCodexRuntime(paths);
       setRuntimeSection("api", { status: "starting", message: "로컬 엔진을 시작하고 있습니다." });
       apiProcess = await ensureService(`${API_URL}/health`, spawnBundledApiServer, "API server");
       setRuntimeSection("api", { status: "ready", message: "로컬 엔진이 준비되었습니다." });
@@ -715,26 +833,49 @@ function findExecutable(command) {
   return null;
 }
 
-function findTailscaleBinary() {
-  const external = findExecutable("tailscale");
-  if (external) {
-    return external;
-  }
-
+function findTailscaleBinary(options = {}) {
+  const { requireReadableStatus = false } = options;
   const candidates = [
     "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
     path.join(app.getPath("home"), "Applications", "Tailscale.app", "Contents", "MacOS", "Tailscale"),
   ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
+  const external = findExecutable("tailscale");
+  if (external) {
+    candidates.push(external);
+  }
+
+  const seen = new Set();
+  const existing = candidates.filter((candidate) => {
+    if (!candidate || seen.has(candidate)) {
+      return false;
+    }
+    seen.add(candidate);
+    return fs.existsSync(candidate);
+  });
+
+  if (!requireReadableStatus) {
+    return existing[0] ?? null;
+  }
+
+  for (const candidate of existing) {
+    if (readTailscaleStatus(candidate)) {
       return candidate;
     }
   }
-  return null;
+
+  return existing[0] ?? null;
+}
+
+function quoteShellArg(value) {
+  return "'" + String(value).replace(/'/g, "'\\''") + "'";
+}
+
+function toShellCommand(command, args = []) {
+  return [command, ...args].map(quoteShellArg).join(" ");
 }
 
 function readTailscaleStatus(binary) {
-  const result = spawnSync(binary, ["status", "--json"], { encoding: "utf8" });
+  const result = spawnSync("/bin/zsh", ["-lc", toShellCommand(binary, ["status", "--json"])], { encoding: "utf8" });
   if (result.status !== 0) {
     return null;
   }
@@ -747,7 +888,7 @@ function readTailscaleStatus(binary) {
 }
 
 function launchDetachedCommand(command, args, extraEnv = {}) {
-  const child = spawn(command, args, {
+  const child = spawn("/bin/zsh", ["-lc", toShellCommand(command, args)], {
     detached: true,
     stdio: "ignore",
     env: { ...process.env, ...extraEnv },
@@ -778,12 +919,15 @@ function openTailscaleApp() {
 }
 
 function startTailscaleInteractiveFlow() {
-  const binary = findTailscaleBinary();
+  const binary = findTailscaleBinary({ requireReadableStatus: true });
   if (!binary) {
-    return false;
+    return openTailscaleApp();
   }
 
   const status = readTailscaleStatus(binary);
+  if (!status) {
+    return openTailscaleApp();
+  }
   const backendState = typeof status?.BackendState === "string" ? status.BackendState : null;
   const authUrl = typeof status?.AuthURL === "string" ? status.AuthURL : "";
   const hasNodeKey = Boolean(status?.HaveNodeKey);
@@ -801,11 +945,10 @@ async function resolveAiAuthCommand() {
     const bundledCodex = await ensurePackagedCodexRuntime(paths);
     if (bundledCodex) {
       return {
-        command: process.execPath,
-        args: [bundledCodex],
+        command: bundledCodex,
+        args: [],
         env: {
           ...process.env,
-          ELECTRON_RUN_AS_NODE: "1",
         },
         source: "bundled",
       };
@@ -984,6 +1127,69 @@ function getPermissionStatus(kind) {
   }
 }
 
+function getWorkspacePermissionPane(targetPath) {
+  if (process.platform !== "darwin" || typeof targetPath !== "string" || !targetPath) {
+    return null;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const homeDir = app.getPath("home");
+  const guardedRoots = ["Desktop", "Documents", "Downloads"].map((name) => path.join(homeDir, name));
+
+  for (const guardedRoot of guardedRoots) {
+    if (resolved === guardedRoot || resolved.startsWith(`${guardedRoot}${path.sep}`)) {
+      return "files";
+    }
+  }
+
+  return "all-files";
+}
+
+function checkWorkspaceAccess(targetPath) {
+  if (typeof targetPath !== "string" || !targetPath.trim()) {
+    throw new Error("확인할 폴더 경로가 없습니다.");
+  }
+
+  const resolved = path.resolve(targetPath);
+  const suggestedPane = getWorkspacePermissionPane(resolved);
+
+  try {
+    const stats = fs.statSync(resolved);
+    if (!stats.isDirectory()) {
+      return {
+        granted: false,
+        path: resolved,
+        detail: "선택한 경로는 폴더가 아닙니다. 문서가 들어 있는 폴더를 다시 골라 주세요.",
+        suggested_pane: suggestedPane,
+      };
+    }
+
+    fs.accessSync(resolved, fs.constants.R_OK | fs.constants.W_OK);
+    fs.readdirSync(resolved, { withFileTypes: true });
+
+    return {
+      granted: true,
+      path: resolved,
+      detail: "폴더 접근이 확인되었습니다. 이후 원격에서도 이 폴더 기준으로 바로 작업할 수 있습니다.",
+      suggested_pane: null,
+    };
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : null;
+    const detail =
+      code === "EACCES" || code === "EPERM"
+        ? "이 폴더에 대한 접근 허용이 아직 없습니다. 지금 이 자리에서 허용해야 원격으로 사용할 때 다시 막히지 않습니다."
+        : error instanceof Error
+          ? error.message
+          : "폴더 접근 확인에 실패했습니다.";
+    return {
+      granted: false,
+      path: resolved,
+      detail,
+      suggested_pane: suggestedPane,
+    };
+  }
+}
+
 function getDesktopStatus() {
   refreshRuntimePaths();
   return {
@@ -1093,7 +1299,28 @@ function registerIpcHandlers() {
   ipcMain.handle("desktop:get-status", async () => getDesktopStatus());
 
   ipcMain.handle("desktop:install-local-runtime", async () => {
-    await ensureBundledApiService({ forceInstall: true });
+    if (app.isPackaged) {
+      stopChild(apiProcess);
+      stopChild(webProcess);
+      apiProcess = null;
+      webProcess = null;
+      const paths = ensurePackagedDirectories();
+      clearPackagedVolatileState(paths);
+      writeJsonFile(paths.installStatePath, {
+        ...getPackagedVersionFingerprint(paths),
+        migrated_at: new Date().toISOString(),
+      });
+      await ensureBundledWebService();
+      await ensureBundledApiService({ forceInstall: true });
+    } else if (REPO_ROOT && WEB_DIR && API_DIR) {
+      stopChild(apiProcess);
+      stopChild(webProcess);
+      apiProcess = null;
+      webProcess = null;
+      await ensureWebBuild();
+      webProcess = await ensureService(WEB_URL, spawnWebServer, "web server");
+      apiProcess = await ensureService(`${API_URL}/health`, spawnApiServer, "API server");
+    }
     return getDesktopStatus();
   });
 
@@ -1126,6 +1353,10 @@ function registerIpcHandlers() {
       return null;
     }
     return result.filePaths[0];
+  });
+
+  ipcMain.handle("desktop:check-workspace-access", async (_event, targetPath) => {
+    return checkWorkspaceAccess(targetPath);
   });
 
   ipcMain.handle("desktop:prompt-accessibility", async () => {
@@ -1163,6 +1394,8 @@ function registerIpcHandlers() {
     const targets = {
       accessibility: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
       screen: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+      files: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders",
+      "all-files": "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
     };
     const target = targets[pane] || targets.accessibility;
     await shell.openExternal(target);
@@ -1174,10 +1407,26 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle("desktop:open-remote-access-app", async () => {
+    if (openTailscaleApp()) {
+      return true;
+    }
+    await shell.openExternal(TAILSCALE_DOWNLOAD_URL);
+    return true;
+  });
+
+  ipcMain.handle("desktop:start-remote-access-flow", async () => {
     if (startTailscaleInteractiveFlow()) {
       return true;
     }
     await shell.openExternal(TAILSCALE_DOWNLOAD_URL);
+    return true;
+  });
+
+  ipcMain.handle("desktop:open-external-url", async (_event, url) => {
+    if (typeof url !== "string" || !url.trim()) {
+      return false;
+    }
+    await shell.openExternal(url);
     return true;
   });
 
@@ -1224,6 +1473,7 @@ async function startSourceApp() {
 }
 
 async function startPackagedApp() {
+  await performPackagedUpgradeMaintenance();
   refreshRuntimePaths();
   await ensureBundledWebService();
   createWindow();

@@ -336,9 +336,11 @@ class OnboardingStatusOut(BaseModel):
     is_complete: bool
     completed_at: datetime | None
     workspace_path: str | None
+    remote_origin: str | None
     codex_login_required: bool
     auth_ready: bool
     workspace_ready: bool
+    workspace_access_ready: bool
     browser_ready: bool
     launch_ready: bool
     selected_mode: str
@@ -355,6 +357,8 @@ class OnboardingStatusOut(BaseModel):
 
 class OnboardingUpdate(BaseModel):
     workspace_path: str | None = None
+    workspace_access_ready: bool | None = None
+    remote_origin: str | None = None
     mark_complete: bool | None = None
 
 
@@ -387,13 +391,18 @@ class TailscaleStatusOut(BaseModel):
     mobile_install_url: str
     ios_install_url: str
     android_install_url: str
+    status_readable: bool
+    status_message: str | None
     logged_in: bool
     service_running: bool
     has_node_key: bool
     backend_state: str | None
     auth_url: str | None
+    self_id: str | None
     self_dns_name: str | None
     current_tailnet: str | None
+    suggested_device_name: str | None
+    suggested_device_name_source: Literal["tailscale", "hostname"] | None = None
     current_user_login: str | None
     current_user_name: str | None
     serve_enabled: bool
@@ -410,3 +419,4 @@ class TailscaleServeApplyResultOut(BaseModel):
     message: str
     command: str
     serve_url: str | None
+    approval_url: str | None = None

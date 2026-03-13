@@ -4,12 +4,32 @@ import type { FormEvent, KeyboardEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ElephantMascot } from "@/components/elephant-mascot";
-import { createChatSession, deleteChatSession, fetchChatSession, fetchChatSessions, sendChatMessage } from "@/lib/api";
-import type { ChatSession, ChatSessionDetail } from "@/lib/types";
+import {
+  approveTask,
+  createChatSession,
+  createTask,
+  deleteChatSession,
+  fetchChatSession,
+  fetchChatSessions,
+  fetchTask,
+  rejectTask,
+  sendChatMessage,
+} from "@/lib/api";
+import type { ChatSession, ChatSessionDetail, TaskDetail } from "@/lib/types";
 
 interface FreeChatPanelProps {
   workspacePath: string;
   compact?: boolean;
+}
+
+type PortalBubbleTone = "default" | "status" | "error";
+
+interface PortalBubble {
+  id: string;
+  role: "assistant" | "user";
+  content: string;
+  created_at: string;
+  tone?: PortalBubbleTone;
 }
 
 const LOCAL_SUGGESTIONS = [
@@ -23,6 +43,18 @@ const PORTAL_SUGGESTIONS = [
   "이메일 보내기 전까지 필요한 준비만 해줘.",
   "사이트 설정 방법을 먼저 조사해줘.",
 ];
+const PORTAL_TASK_STORAGE_KEY = "elemate.portal.active-task-id";
+const PORTAL_FEED_STORAGE_KEY = "elemate.portal.feed.v3";
+
+function createPortalBubble(role: PortalBubble["role"], content: string, tone: PortalBubbleTone = "default"): PortalBubble {
+  return {
+    id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    content,
+    tone,
+    created_at: new Date().toISOString(),
+  };
+}
 
 function formatTime(value: string | null | undefined): string {
   if (!value) {
@@ -48,10 +80,61 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [isApprovalPending, setIsApprovalPending] = useState(false);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [activeTask, setActiveTask] = useState<TaskDetail | null>(null);
+  const [portalFeed, setPortalFeed] = useState<PortalBubble[]>([]);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const lastTaskNarrativeRef = useRef<string | null>(null);
+  const lastObservedTaskIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!compact) {
+      return;
+    }
+    const stored = window.localStorage.getItem(PORTAL_TASK_STORAGE_KEY);
+    if (stored) {
+      setActiveTaskId(stored);
+    }
+  }, [compact]);
+
+  useEffect(() => {
+    if (!compact) {
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(PORTAL_FEED_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as PortalBubble[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setPortalFeed(parsed);
+          return;
+        }
+      }
+    } catch {
+      // Ignore bad local state and seed a fresh conversation.
+    }
+    setPortalFeed([
+      createPortalBubble(
+        "assistant",
+        "무엇을 도와드릴까요? 해야 할 일을 한 문장으로 보내면 바로 실행을 시작하고, 위험한 단계만 승인 요청 후 멈춥니다.",
+      ),
+    ]);
+  }, [compact]);
+
+  useEffect(() => {
+    if (!compact) {
+      return;
+    }
+    window.localStorage.setItem(PORTAL_FEED_STORAGE_KEY, JSON.stringify(portalFeed));
+  }, [compact, portalFeed]);
+
+  useEffect(() => {
+    if (compact) {
+      return;
+    }
     let cancelled = false;
 
     async function load() {
@@ -80,9 +163,13 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
     return () => {
       cancelled = true;
     };
-  }, [activeSessionId]);
+  }, [activeSessionId, compact]);
 
   useEffect(() => {
+    if (compact) {
+      setActiveSession(null);
+      return;
+    }
     if (!activeSessionId) {
       setActiveSession(null);
       return;
@@ -104,19 +191,100 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
     return () => {
       cancelled = true;
     };
-  }, [activeSessionId]);
+  }, [activeSessionId, compact]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [activeSession, isSending]);
+  }, [activeSession, activeTask, isSending, isExecuting, portalFeed, isApprovalPending]);
+
+  useEffect(() => {
+    if (!compact || !activeTaskId) {
+      setActiveTask(null);
+      return;
+    }
+
+    const taskId = activeTaskId;
+    let cancelled = false;
+    const terminalStatuses = new Set(["COMPLETED", "FAILED", "REJECTED", "CANCELED"]);
+
+    async function loadTask() {
+      try {
+        const nextTask = await fetchTask(taskId);
+        if (cancelled) {
+          return;
+        }
+        setActiveTask(nextTask);
+        if (terminalStatuses.has(nextTask.status)) {
+          return;
+        }
+        window.setTimeout(() => {
+          if (!cancelled) {
+            void loadTask();
+          }
+        }, 2500);
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "실행 상태를 불러오지 못했습니다.");
+        }
+      }
+    }
+
+    void loadTask();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTaskId, compact]);
+
+  useEffect(() => {
+    if (!compact) {
+      return;
+    }
+    if (!activeTaskId) {
+      lastObservedTaskIdRef.current = null;
+      lastTaskNarrativeRef.current = null;
+      return;
+    }
+    if (lastObservedTaskIdRef.current !== activeTaskId) {
+      lastObservedTaskIdRef.current = activeTaskId;
+      lastTaskNarrativeRef.current = null;
+    }
+  }, [activeTaskId, compact]);
+
+  useEffect(() => {
+    if (!compact || !activeTask) {
+      return;
+    }
+    const pending = activeTask.approvals.find((item) => item.status === "PENDING") ?? null;
+    const narrative =
+      activeTask.status === "WAITING_APPROVAL" && pending
+        ? `${pending.action_type} 단계에서 승인이 필요해요. 아래에서 계속 진행할지 정해주세요.`
+        : activeTask.status === "COMPLETED"
+          ? activeTask.final_report || "작업을 마쳤어요."
+          : activeTask.status === "FAILED"
+            ? activeTask.final_report || "작업이 실패했어요. 조건을 조금 바꿔서 다시 맡겨주세요."
+            : activeTask.status === "REJECTED"
+              ? "요청하신 작업은 승인 거절로 여기서 멈췄어요."
+              : activeTask.status === "CANCELED"
+                ? "작업이 취소됐어요."
+                : null;
+    const signature = narrative ? `${activeTask.id}:${activeTask.status}:${narrative}` : null;
+    if (!narrative || signature === lastTaskNarrativeRef.current) {
+      return;
+    }
+    setPortalFeed((current) => [...current, createPortalBubble("assistant", narrative, activeTask.status === "FAILED" ? "error" : "status")]);
+    lastTaskNarrativeRef.current = signature;
+  }, [activeTask, compact]);
 
   const suggestions = compact ? PORTAL_SUGGESTIONS : LOCAL_SUGGESTIONS;
   const workspaceLabel =
     activeSession?.workspace_path || workspacePath || (compact ? "장비 주인이 아직 폴더를 연결하지 않았습니다." : "아직 작업 폴더를 연결하지 않았습니다.");
 
   const latestReplyHint = useMemo(() => {
+    if (compact) {
+      return "이 화면은 처음부터 실행용입니다. 한 줄로 맡기면 바로 작업을 만들고, 위험한 단계만 승인 요청 후 멈춥니다.";
+    }
     if (!activeSession?.messages.length) {
-      return compact ? "휴대폰에서는 요청만 짧게 말하면 됩니다." : "정확한 파일 작업을 원하면 먼저 왼쪽에서 폴더를 연결하세요.";
+      return "정확한 파일 작업을 원하면 먼저 왼쪽에서 폴더를 연결하세요.";
     }
     return "바로 이어서 질문하거나 다음 일을 맡기면 됩니다.";
   }, [activeSession, compact]);
@@ -159,8 +327,68 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
     })();
   }
 
+  function deriveTaskTitle(content: string): string {
+    const normalized = content.replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return "새 실행 작업";
+    }
+    return normalized.length > 40 ? `${normalized.slice(0, 40)}...` : normalized;
+  }
+
+  function runDraftAsTask() {
+    const nextDraft = draft.trim();
+    if (!nextDraft) {
+      return;
+    }
+
+    if (compact) {
+      setPortalFeed((current) => [
+        ...current,
+        createPortalBubble("user", nextDraft),
+        createPortalBubble("assistant", "알겠습니다. 바로 확인하고 움직일게요.", "status"),
+      ]);
+    }
+    setIsExecuting(true);
+    setError(null);
+    void (async () => {
+      try {
+        const created = await createTask({
+          title: deriveTaskTitle(nextDraft),
+          goal: nextDraft,
+          workspace_path: activeSession?.workspace_path || workspacePath || null,
+          requested_by: compact ? "portal-user" : "local-user",
+          risk_level: "MEDIUM",
+        });
+        if (compact) {
+          setActiveTaskId(created.id);
+          window.localStorage.setItem(PORTAL_TASK_STORAGE_KEY, created.id);
+        }
+        setActiveTask(created);
+        setDraft("");
+      } catch (taskError) {
+        if (compact) {
+          setPortalFeed((current) => [
+            ...current,
+            createPortalBubble(
+              "assistant",
+              taskError instanceof Error ? taskError.message : "실행 작업을 시작하지 못했습니다.",
+              "error",
+            ),
+          ]);
+        }
+        setError(taskError instanceof Error ? taskError.message : "실행 작업을 시작하지 못했습니다.");
+      } finally {
+        setIsExecuting(false);
+      }
+    })();
+  }
+
   function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (compact) {
+      runDraftAsTask();
+      return;
+    }
     submitDraft();
   }
 
@@ -168,11 +396,55 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
     if (event.key !== "Enter" || event.shiftKey) {
       return;
     }
-    if (event.nativeEvent.isComposing || isSending) {
+    if (event.nativeEvent.isComposing || isSending || isExecuting) {
       return;
     }
     event.preventDefault();
+    if (compact) {
+      runDraftAsTask();
+      return;
+    }
     submitDraft();
+  }
+
+  async function handleApproval(approved: boolean) {
+    if (!activeTask) {
+      return;
+    }
+    const pending = activeTask.approvals.find((item) => item.status === "PENDING");
+    if (!pending) {
+      return;
+    }
+    setIsApprovalPending(true);
+    setError(null);
+    try {
+      if (approved) {
+        await approveTask(activeTask.id, { decided_by: "portal-user" });
+        if (compact) {
+          setPortalFeed((current) => [...current, createPortalBubble("assistant", "승인 확인했습니다. 바로 이어서 진행할게요.", "status")]);
+        }
+      } else {
+        await rejectTask(activeTask.id, { decided_by: "portal-user" });
+        if (compact) {
+          setPortalFeed((current) => [...current, createPortalBubble("assistant", "여기서 멈출게요. 다른 방식으로 다시 맡기셔도 됩니다.", "status")]);
+        }
+      }
+      setActiveTask(await fetchTask(activeTask.id));
+    } catch (approvalError) {
+      if (compact) {
+        setPortalFeed((current) => [
+          ...current,
+          createPortalBubble(
+            "assistant",
+            approvalError instanceof Error ? approvalError.message : "승인 상태를 업데이트하지 못했습니다.",
+            "error",
+          ),
+        ]);
+      }
+      setError(approvalError instanceof Error ? approvalError.message : "승인 상태를 업데이트하지 못했습니다.");
+    } finally {
+      setIsApprovalPending(false);
+    }
   }
 
   function handleNewChat() {
@@ -206,6 +478,11 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
     textareaRef.current?.focus();
   }
 
+  const pendingApproval = activeTask?.approvals.find((item) => item.status === "PENDING") ?? null;
+  const showPortalTyping =
+    compact &&
+    !pendingApproval &&
+    (isExecuting || (activeTask ? ["PENDING", "PLANNING", "RUNNING"].includes(activeTask.status) : false));
   return (
     <section className={`grid gap-5 ${compact ? "min-h-[680px]" : "xl:grid-cols-[250px_minmax(0,1fr)]"}`}>
       {!compact ? (
@@ -255,8 +532,10 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
         <div className="border-b border-white/8 px-5 py-5 sm:px-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="eyebrow">{compact ? "Remote Chat" : "Chat"}</p>
-              <h2 className="mt-3 font-display text-[30px] font-semibold tracking-[-0.05em] text-ink">말로 맡기면 됩니다.</h2>
+              <p className="eyebrow">{compact ? "Assistant" : "Chat"}</p>
+              <h2 className="mt-3 font-display text-[30px] font-semibold tracking-[-0.05em] text-ink">
+                {compact ? "내 비서와 대화하듯 맡기면 됩니다." : "말로 맡기면 됩니다."}
+              </h2>
               <p className="ui-copy-sm mt-3 max-w-2xl">{latestReplyHint}</p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -280,11 +559,108 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
             <span className="ui-chip px-3 py-1.5">
               승인 필요 작업은 중간에 멈춥니다
             </span>
+            {compact ? <span className="ui-chip px-3 py-1.5">대화처럼 보내면 바로 실행을 시작합니다</span> : null}
           </div>
         </div>
 
         <div className="flex-1 overflow-auto px-4 py-5 sm:px-6">
-          {activeSession?.messages.length ? (
+          {compact ? (
+            <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
+              <div className="space-y-4">
+                {portalFeed.map((message) => {
+                  const isAssistant = message.role === "assistant";
+                  const isError = message.tone === "error";
+                  const isStatus = message.tone === "status";
+                  return (
+                    <div key={message.id} className={`flex ${isAssistant ? "justify-start" : "justify-end"}`}>
+                      <div
+                        className={`max-w-[94%] rounded-[28px] px-4 py-3.5 text-[15px] leading-7 shadow-[0_24px_50px_-42px_rgba(0,0,0,0.82)] sm:max-w-[80%] ${
+                          isAssistant
+                            ? isError
+                              ? "border border-red-400/18 bg-red-500/12 text-ink"
+                              : isStatus
+                                ? "border border-white/10 bg-white/[0.05] text-ink"
+                                : "border border-white/10 bg-white/[0.05] text-ink"
+                            : "border border-sky-300/18 bg-[linear-gradient(180deg,rgba(94,117,179,0.98),rgba(41,58,96,0.96))] text-white"
+                        }`}
+                      >
+                        <p className="whitespace-pre-wrap">{message.content}</p>
+                        <p className={`mt-3 text-[11px] ${isAssistant ? "text-steel" : "text-white/72"}`}>{formatTime(message.created_at)}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {pendingApproval ? (
+                  <div className="flex justify-start">
+                    <div className="max-w-[94%] rounded-[26px] border border-amber-300/18 bg-amber-500/10 px-4 py-4 sm:max-w-[80%]">
+                      <p className="text-sm font-semibold text-ink">승인 필요</p>
+                      <p className="mt-2 text-sm leading-7 text-steel">
+                        {pendingApproval.action_type} 작업이 대기 중입니다. 확인 후 계속 진행할지 선택하세요.
+                      </p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleApproval(true)}
+                          disabled={isApprovalPending}
+                          className="ui-button-primary disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          {isApprovalPending ? "처리 중" : "승인"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleApproval(false)}
+                          disabled={isApprovalPending}
+                          className="ui-button-secondary disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          거절
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {showPortalTyping ? (
+                  <div className="flex justify-start">
+                    <div className="rounded-[24px] border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-steel">
+                      <div className="portal-typing-dots" aria-label="에이전트 입력중">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {!portalFeed.length ? (
+                  <div className="flex h-full items-center justify-center">
+                    <div className="max-w-3xl text-center">
+                      <div className="mx-auto w-[180px]">
+                        <ElephantMascot className="w-full" caption="짧게 말해도 됩니다." />
+                      </div>
+                      <h3 className="ui-title-section mt-6">무엇을 도와드릴까요?</h3>
+                    </div>
+                  </div>
+                ) : null}
+
+                {portalFeed.length <= 1 && !activeTaskId ? (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {suggestions.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => applySuggestion(item)}
+                        className="ui-button-secondary px-4 py-2.5"
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div ref={messageEndRef} />
+              </div>
+            </div>
+          ) : activeSession?.messages.length ? (
             <div className="space-y-4">
               {activeSession.messages.map((message) => {
                 const isAssistant = message.role === "assistant";
@@ -318,7 +694,9 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
                 </div>
                 <h3 className="ui-title-section mt-6">무엇을 도와드릴까요?</h3>
                 <p className="ui-copy-sm mx-auto mt-3 max-w-2xl">
-                  해야 할 일을 한 문장으로 적어도 됩니다. 정확한 파일 작업은 연결된 폴더를 기준으로, 위험한 작업은 승인 요청 후에 진행합니다.
+                  {compact
+                    ? "해야 할 일을 한 문장으로 적으면 바로 실행 작업을 시작합니다. 정확한 파일 작업은 연결된 폴더를 기준으로, 위험한 작업은 승인 요청 후에 진행합니다."
+                    : "해야 할 일을 한 문장으로 적어도 됩니다. 정확한 파일 작업은 연결된 폴더를 기준으로, 위험한 작업은 승인 요청 후에 진행합니다."}
                 </p>
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
                   {suggestions.map((item) => (
@@ -344,18 +722,34 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={handleComposerKeyDown}
-              placeholder="예: 이 폴더를 먼저 읽고, 오늘 할 일을 쉬운 순서로 정리해줘."
+              placeholder={
+                compact
+                  ? "예: 이 폴더를 읽고, 오늘 해야 할 일을 정리한 뒤 바로 실행해줘."
+                  : "예: 이 폴더를 먼저 읽고, 오늘 할 일을 쉬운 순서로 정리해줘."
+              }
               className="h-28 w-full resize-none rounded-[22px] border border-white/8 bg-[#09101a] px-4 py-4 text-[15px] leading-7 text-ink outline-none transition placeholder:text-steel focus:border-sky-300/34"
             />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 px-1">
-              <p className="text-xs text-steel">Enter 전송, Shift+Enter 줄바꿈</p>
-              <button
-                type="submit"
-                disabled={isSending || !draft.trim()}
-                className="ui-button-primary disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                {isSending ? "보내는 중" : "보내기"}
-              </button>
+              <p className="text-xs text-steel">{compact ? "메시지를 보내면 바로 실행합니다. Shift+Enter만 줄바꿈입니다." : "Enter 전송, Shift+Enter 줄바꿈"}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {compact ? (
+                  <button
+                    type="submit"
+                    disabled={isExecuting || !draft.trim()}
+                    className="ui-button-primary disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {isExecuting ? "실행 중" : "실행하기"}
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={isSending || !draft.trim()}
+                    className="ui-button-primary disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {isSending ? "보내는 중" : "보내기"}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
           {error ? <p className="mt-3 rounded-[18px] border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">{error}</p> : null}

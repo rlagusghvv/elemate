@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { ElephantMascot } from "@/components/elephant-mascot";
+import { resolvePortalLink } from "@/lib/portal-links";
 import type { DesktopBridgeStatus, OnboardingStatus, Portal, TailscaleStatus } from "@/lib/types";
 
 interface OnboardingConsoleProps {
@@ -55,9 +56,11 @@ export function OnboardingConsole({
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
 
   const selectedWorkspace = workspacePath || onboarding?.workspace_path || "";
-  const linkValue = portal?.portal_url || tailscaleStatus?.serve_url || null;
-  const readyCount = [onboarding?.auth_ready, Boolean(selectedWorkspace), Boolean(tailscaleStatus?.serve_enabled)].filter(Boolean).length;
+  const linkValue = resolvePortalLink(portal, tailscaleStatus);
+  const remoteLinkReady = Boolean(linkValue);
+  const readyCount = [onboarding?.auth_ready, Boolean(selectedWorkspace), remoteLinkReady].filter(Boolean).length;
   const daemonReady = Boolean(desktopStatus?.daemon.loaded);
+  const remoteStatusReadable = Boolean(tailscaleStatus?.status_readable);
 
   const summary = useMemo(() => {
     if (!onboarding?.auth_ready) {
@@ -66,11 +69,11 @@ export function OnboardingConsole({
     if (!selectedWorkspace) {
       return "다음으로 폴더 하나를 고르면 파일 작업 요청을 바로 받을 수 있습니다.";
     }
-    if (!tailscaleStatus?.serve_enabled) {
+    if (!remoteLinkReady) {
       return "마지막으로 휴대폰 접속만 켜면 밖에서도 바로 말을 걸 수 있습니다.";
     }
     return "준비가 끝났습니다. 이제 오른쪽에서 하고 싶은 일을 그냥 말하면 됩니다.";
-  }, [onboarding?.auth_ready, selectedWorkspace, tailscaleStatus?.serve_enabled]);
+  }, [onboarding?.auth_ready, remoteLinkReady, selectedWorkspace]);
 
   async function copyValue(value: string | null | undefined, message: string) {
     if (!value) {
@@ -175,34 +178,38 @@ export function OnboardingConsole({
               <p className="text-[12px] font-semibold tracking-[0.14em] text-steel">03 휴대폰 접속</p>
               <p className="mt-2 text-base font-semibold text-ink">
                 {!tailscaleStatus?.logged_in
-                  ? "원격 연결 로그인이 필요합니다."
-                  : tailscaleStatus.serve_enabled
+                  ? !remoteStatusReadable && tailscaleStatus?.cli_available
+                    ? "원격 연결 앱 오류가 있습니다."
+                    : "원격 연결 로그인이 필요합니다."
+                  : remoteLinkReady
                     ? "개인 접속 링크가 준비됐습니다."
                     : "휴대폰용 링크를 아직 열지 않았습니다."}
               </p>
               <p className="ui-copy-sm mt-2 break-all">
                 {!tailscaleStatus?.logged_in
-                  ? "원격 연결 앱에서 로그인만 끝내면 됩니다. 앱이 없으면 설치 페이지를 바로 엽니다."
-                  : tailscaleStatus.serve_enabled
+                  ? !remoteStatusReadable && tailscaleStatus?.cli_available
+                    ? "Tailscale 앱은 설치돼 있지만 이 Mac에서 정상 상태를 읽지 못했습니다. 앱을 직접 열어 연결 상태를 확인하거나 다시 시작한 뒤 다시 확인하세요."
+                    : "원격 연결 앱에서 로그인만 끝내면 됩니다. 앱이 없으면 설치 페이지를 바로 엽니다."
+                  : remoteLinkReady
                     ? linkValue || "링크가 준비되었습니다."
                     : "버튼 한 번으로 내 휴대폰 접속을 켤 수 있습니다."}
               </p>
             </div>
-            <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(Boolean(tailscaleStatus?.serve_enabled))}`}>
-              {statusChip(Boolean(tailscaleStatus?.serve_enabled), !tailscaleStatus?.logged_in ? "로그인 필요" : "설정 필요")}
+            <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(remoteLinkReady)}`}>
+              {statusChip(remoteLinkReady, !tailscaleStatus?.logged_in ? "로그인 필요" : "설정 필요")}
             </span>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            {!tailscaleStatus?.logged_in && desktopStatus?.is_desktop_app ? (
+            {(!remoteStatusReadable || !tailscaleStatus?.logged_in) && desktopStatus?.is_desktop_app ? (
               <button
                 type="button"
                 onClick={onOpenRemoteAccessApp}
                 className="ui-button-secondary px-4 py-2.5"
               >
-                원격 연결 앱 열기
+                {!tailscaleStatus?.cli_available ? "원격 연결 앱 설치" : !remoteStatusReadable ? "원격 연결 앱 열기" : "원격 연결 앱 열기"}
               </button>
             ) : null}
-            {tailscaleStatus?.logged_in && !tailscaleStatus.serve_enabled ? (
+            {tailscaleStatus?.logged_in && !remoteLinkReady ? (
               <button
                 type="button"
                 onClick={onEnableRemoteAccess}
@@ -212,7 +219,7 @@ export function OnboardingConsole({
                 휴대폰 접속 켜기
               </button>
             ) : null}
-            {tailscaleStatus?.serve_enabled ? (
+            {remoteLinkReady ? (
               <>
                 <button
                   type="button"

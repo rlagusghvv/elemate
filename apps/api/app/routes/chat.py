@@ -6,7 +6,13 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..identity import get_actor_identity
 from ..schemas import ChatMessageCreate, ChatSessionCreate, ChatSessionDetailOut, ChatSessionOut
-from ..services.chat import create_chat_session, delete_chat_session, get_chat_session, list_chat_sessions, send_chat_message
+from ..services.chat import (
+    create_chat_session,
+    delete_chat_session,
+    get_chat_session_detail_payload,
+    list_chat_sessions,
+    send_chat_message,
+)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -21,19 +27,20 @@ def get_chat_sessions(request: Request, db: Session = Depends(get_db)) -> list[C
 def create_session(payload: ChatSessionCreate, request: Request, db: Session = Depends(get_db)) -> ChatSessionDetailOut:
     actor = get_actor_identity(request)
     session = create_chat_session(db, payload, actor)
-    return get_chat_session(db, session.id, actor)
+    return ChatSessionDetailOut.model_validate(get_chat_session_detail_payload(db, session.id, actor))
 
 
 @router.get("/sessions/{session_id}", response_model=ChatSessionDetailOut)
 def get_session(session_id: str, request: Request, db: Session = Depends(get_db)) -> ChatSessionDetailOut:
     actor = get_actor_identity(request)
-    return get_chat_session(db, session_id, actor)
+    return ChatSessionDetailOut.model_validate(get_chat_session_detail_payload(db, session_id, actor))
 
 
 @router.post("/sessions/{session_id}/messages", response_model=ChatSessionDetailOut)
 def post_message(session_id: str, payload: ChatMessageCreate, request: Request, db: Session = Depends(get_db)) -> ChatSessionDetailOut:
     actor = get_actor_identity(request)
-    return send_chat_message(db, session_id, payload, actor)
+    session = send_chat_message(db, session_id, payload, actor)
+    return ChatSessionDetailOut.model_validate(get_chat_session_detail_payload(db, session.id, actor))
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

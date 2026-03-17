@@ -16,6 +16,8 @@ function envFirst(...names) {
 const repoRootEnv = envFirst("ELEMATE_REPO_ROOT", "FORGE_REPO_ROOT");
 const SOURCE_REPO_ROOT = repoRootEnv ? path.resolve(repoRootEnv) : path.resolve(__dirname, "..", "..");
 const REPO_ROOT = app.isPackaged ? (repoRootEnv ? SOURCE_REPO_ROOT : null) : SOURCE_REPO_ROOT;
+const DESKTOP_WEB_PORT = envFirst("ELEMATE_LOCAL_WEB_PORT", "FORGE_LOCAL_WEB_PORT") || "43115";
+const DESKTOP_API_PORT = envFirst("ELEMATE_LOCAL_API_PORT", "FORGE_LOCAL_API_PORT") || "43116";
 const PACKAGED_RUNTIME_ROOT = app.isPackaged ? path.join(process.resourcesPath, "runtime") : null;
 const PACKAGED_MANIFEST_PATH = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "manifest.json") : null;
 const PACKAGED_WEB_ARCHIVE_PATH = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "web-runtime.tar.gz") : null;
@@ -26,8 +28,8 @@ const PACKAGED_CODEX_ARCHIVE_PATH = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_R
 const PACKAGED_SCRIPTS_DIR = PACKAGED_RUNTIME_ROOT ? path.join(PACKAGED_RUNTIME_ROOT, "scripts") : null;
 const WEB_DIR = REPO_ROOT ? path.join(REPO_ROOT, "apps", "web") : null;
 const API_DIR = REPO_ROOT ? path.join(REPO_ROOT, "apps", "api") : null;
-const WEB_URL = envFirst("ELEMATE_DESKTOP_WEB_URL", "FORGE_DESKTOP_WEB_URL") || "http://127.0.0.1:3000";
-const API_URL = envFirst("ELEMATE_DESKTOP_API_URL", "FORGE_DESKTOP_API_URL") || "http://127.0.0.1:8000";
+const WEB_URL = envFirst("ELEMATE_DESKTOP_WEB_URL", "FORGE_DESKTOP_WEB_URL") || `http://127.0.0.1:${DESKTOP_WEB_PORT}`;
+const API_URL = envFirst("ELEMATE_DESKTOP_API_URL", "FORGE_DESKTOP_API_URL") || `http://127.0.0.1:${DESKTOP_API_PORT}`;
 const DAEMON_LABEL = "com.elemate.agent.daemon";
 const PYTHON_DOWNLOAD_URL = "https://www.python.org/downloads/macos/";
 const CODEX_INSTALL_URL = "https://developers.openai.com/codex/cli";
@@ -381,7 +383,7 @@ function spawnApiServer() {
       "EleMate를 열려면 먼저 기본 실행 도구가 필요합니다.\n\nPython 3를 설치한 뒤 다시 시도하세요.\n" + PYTHON_DOWNLOAD_URL,
     );
   }
-  return spawn(getPythonCommand(), ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"], {
+  return spawn(getPythonCommand(), ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", DESKTOP_API_PORT], {
     cwd: API_DIR,
     stdio: "inherit",
     env: { ...process.env },
@@ -413,6 +415,8 @@ function packagedApiEnvironment(paths) {
     ELEMATE_WORKSPACE_ROOT: app.getPath("home"),
     ELEMATE_PACKAGED_RUNTIME: "1",
     ELEMATE_BUNDLED_CODEX_AVAILABLE: paths.codexArchivePath && fs.existsSync(paths.codexArchivePath) ? "1" : "",
+    ELEMATE_LOCAL_WEB_PORT: DESKTOP_WEB_PORT,
+    ELEMATE_LOCAL_API_PORT: DESKTOP_API_PORT,
   };
 }
 
@@ -679,7 +683,7 @@ function spawnBundledApiServer() {
   if (!fs.existsSync(python)) {
     throw new Error("로컬 엔진이 아직 준비되지 않았습니다. 먼저 런타임 설치를 완료하세요.");
   }
-  const child = spawn(python, ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"], {
+  const child = spawn(python, ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", DESKTOP_API_PORT], {
     cwd: paths.apiDir,
     stdio: "pipe",
     env: packagedApiEnvironment(paths),
@@ -748,9 +752,10 @@ function spawnWebServer() {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "1",
       HOSTNAME: "127.0.0.1",
-      PORT: "3000",
+      PORT: DESKTOP_WEB_PORT,
       NODE_ENV: "production",
       NEXT_TELEMETRY_DISABLED: "1",
+      ELEMATE_LOCAL_API_PORT: DESKTOP_API_PORT,
     },
   });
 }
@@ -768,10 +773,11 @@ function spawnBundledWebServer() {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "1",
       HOSTNAME: "127.0.0.1",
-      PORT: "3000",
+      PORT: DESKTOP_WEB_PORT,
       NODE_ENV: "production",
       NEXT_TELEMETRY_DISABLED: "1",
       ELEMATE_PUBLIC_SITE_MODE: "",
+      ELEMATE_LOCAL_API_PORT: DESKTOP_API_PORT,
     },
   });
   attachChildLogs(child, paths.webLogPath);

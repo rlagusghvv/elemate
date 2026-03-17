@@ -6,6 +6,8 @@ API_DIR="$ROOT_DIR/apps/api"
 WEB_DIR="$ROOT_DIR/apps/web"
 LOG_DIR="$ROOT_DIR/logs"
 VENV_PYTHON="$API_DIR/.venv/bin/python"
+LOCAL_API_PORT="${ELEMATE_LOCAL_API_PORT:-${FORGE_LOCAL_API_PORT:-43116}}"
+LOCAL_WEB_PORT="${ELEMATE_LOCAL_WEB_PORT:-${FORGE_LOCAL_WEB_PORT:-43115}}"
 
 mkdir -p "$LOG_DIR"
 
@@ -34,11 +36,11 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 cd "$API_DIR"
-"$VENV_PYTHON" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 >>"$LOG_DIR/api.stdout.log" 2>>"$LOG_DIR/api.stderr.log" &
+"$VENV_PYTHON" -m uvicorn app.main:app --host 127.0.0.1 --port "$LOCAL_API_PORT" >>"$LOG_DIR/api.stdout.log" 2>>"$LOG_DIR/api.stderr.log" &
 API_PID=$!
 
 cd "$WEB_DIR"
-npm run start -- --hostname 127.0.0.1 --port 3000 >>"$LOG_DIR/web.stdout.log" 2>>"$LOG_DIR/web.stderr.log" &
+ELEMATE_LOCAL_API_PORT="$LOCAL_API_PORT" npm run start -- --hostname 127.0.0.1 --port "$LOCAL_WEB_PORT" >>"$LOG_DIR/web.stdout.log" 2>>"$LOG_DIR/web.stderr.log" &
 WEB_PID=$!
 
 while true; do

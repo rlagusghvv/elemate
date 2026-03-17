@@ -39,7 +39,7 @@ export function resolveApiUrl(path: string): string {
   if (/^https?:\/\//.test(API_BASE_URL)) {
     return new URL(path, API_BASE_URL.endsWith("/") ? API_BASE_URL : `${API_BASE_URL}/`).toString();
   }
-  const origin = typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:3000";
+  const origin = typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:43115";
   const normalizedBase = API_BASE_URL.startsWith("/") ? API_BASE_URL : `/${API_BASE_URL}`;
   return new URL(`${normalizedBase}${path}`, origin).toString();
 }

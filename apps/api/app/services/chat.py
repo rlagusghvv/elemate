@@ -14,6 +14,12 @@ from ..models import ChatMessage, ChatSession
 from ..schemas import ChatMessageCreate, ChatSessionCreate, ChatSessionOut
 
 CHAT_LOAD_OPTIONS = (selectinload(ChatSession.messages),)
+LEGACY_CHAT_MESSAGE_MARKERS = (
+    "이 채팅 안에서는 제가 직접 실행 모드로 전환하진 못해요.",
+    "원하시는 작업을 한 줄로 말해 주세요.",
+    "그러면 제가 실행 모드용으로 바로 바꿔드릴게요.",
+    "실행이 필요하면 하단의 실행 모드를 눌러 바로 이어서 진행할 수 있어요.",
+)
 
 
 def list_chat_sessions(db: Session, actor: ActorIdentity, limit: int = 30) -> list[ChatSessionOut]:
@@ -54,6 +60,14 @@ def get_chat_session(db: Session, session_id: str, actor: ActorIdentity) -> Chat
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
     session.messages.sort(key=lambda item: item.created_at)
     return session
+
+
+def get_chat_session_detail_payload(db: Session, session_id: str, actor: ActorIdentity) -> dict:
+    session = get_chat_session(db, session_id, actor)
+    return {
+        **_session_payload(session),
+        "messages": _visible_messages(session.messages),
+    }
 
 
 def delete_chat_session(db: Session, session_id: str, actor: ActorIdentity) -> None:
@@ -155,9 +169,8 @@ def _codex_chat_reply(*, transcript: list[dict[str, str]], workspace_path: str, 
 
 def _demo_chat_reply(latest_user_message: str) -> str:
     return (
-        "지금은 자유 채팅 데모 모드입니다. "
-        f"방금 요청은 `{latest_user_message}`로 이해했습니다. "
-        "실행이 필요한 작업이면 바로 작업으로 전환해 달라고 말해 주세요."
+        f"`{latest_user_message}`로 이해했습니다. "
+        "바로 맡길 일을 이어서 적어주시면 필요한 순서와 다음 행동을 짧게 정리해드릴게요."
     )
 
 
@@ -169,7 +182,8 @@ def _build_chat_prompt(*, transcript: list[dict[str, str]], workspace_path: str)
         "- Reply in Korean unless the user clearly uses another language.\n"
         "- Be concise, practical, and easy for non-technical users to follow.\n"
         "- Do not modify files, do not run shell commands, and do not take actions in chat mode.\n"
-        "- If the user asks for execution, explain briefly what would happen and tell them to use the execution button in the same screen to actually start it.\n"
+        "- If the user asks for execution, do not explain any mode system and do not ask the user to restate the task.\n"
+        "- For execution requests, reply in one short Korean sentence focused on the next practical step or what can be done right away.\n"
         "- You may reference the current workspace context if relevant, but keep the reply conversational.\n"
         "- If the user asks what this device can do, answer in plain Korean with 3-6 short bullets focused on outcomes such as file cleanup, code fixes, document research, browser setup, or draft preparation.\n"
         "- For capability questions, call the workspace simply '연결된 폴더' instead of showing the raw path.\n"
@@ -204,6 +218,17 @@ def _derive_title(content: str) -> str:
 def _message_count(db: Session, session_id: str) -> int:
     session = db.scalar(select(ChatSession).where(ChatSession.id == session_id).options(*CHAT_LOAD_OPTIONS))
     return len(session.messages) if session is not None else 0
+
+
+def _visible_messages(messages: list[ChatMessage]) -> list[ChatMessage]:
+    return [message for message in messages if not _is_legacy_mode_hint(message)]
+
+
+def _is_legacy_mode_hint(message: ChatMessage) -> bool:
+    if str(message.role or "").strip().lower() != "assistant":
+        return False
+    content = str(message.content or "")
+    return any(marker in content for marker in LEGACY_CHAT_MESSAGE_MARKERS)
 
 
 def _session_payload(session: ChatSession) -> dict:

@@ -24,6 +24,7 @@ TAILSCALE_DESKTOP_INSTALL_URL = "https://tailscale.com/download"
 TAILSCALE_MOBILE_INSTALL_URL = "https://tailscale.com/download"
 TAILSCALE_IOS_INSTALL_URL = "https://tailscale.com/download/ios"
 TAILSCALE_ANDROID_INSTALL_URL = "https://tailscale.com/download/android"
+DEFAULT_ELEMATE_WEB_PORT = int(os.getenv("ELEMATE_LOCAL_WEB_PORT", os.getenv("FORGE_LOCAL_WEB_PORT", "43115")))
 
 
 def get_tailscale_status() -> TailscaleStatusOut:
@@ -54,9 +55,12 @@ def get_tailscale_status() -> TailscaleStatusOut:
             current_user_login=None,
             current_user_name=None,
             serve_enabled=False,
+            serve_matches_runtime=False,
+            serve_target=None,
+            serve_hosts=[],
             serve_url=None,
             serve_config=None,
-            recommended_command="tailscale serve --bg 3000",
+            recommended_command=f"tailscale serve --bg {DEFAULT_ELEMATE_WEB_PORT}",
             recommended_script_path=str(TAILSCALE_SCRIPT_PATH),
             portal_auto_provisioning=True,
             identity_headers_expected=TAILSCALE_HEADERS,
@@ -84,7 +88,9 @@ def get_tailscale_status() -> TailscaleStatusOut:
         suggested_device_name = _local_hostname_hint()
         suggested_device_name_source = "hostname" if suggested_device_name else None
     serve_enabled = bool(serve_payload.get("TCP")) or bool(serve_payload.get("Web"))
-    serve_url = f"https://{dns_name}" if dns_name and serve_enabled else None
+    serve_hosts, serve_target = _extract_serve_hosts_and_target(serve_payload)
+    serve_url = _matching_serve_url(serve_payload, local_port=DEFAULT_ELEMATE_WEB_PORT)
+    serve_matches_runtime = bool(serve_url)
 
     return TailscaleStatusOut(
         cli_available=True,
@@ -108,16 +114,19 @@ def get_tailscale_status() -> TailscaleStatusOut:
         current_user_login=user_login,
         current_user_name=user_name,
         serve_enabled=serve_enabled,
+        serve_matches_runtime=serve_matches_runtime,
+        serve_target=serve_target,
+        serve_hosts=serve_hosts,
         serve_url=serve_url,
         serve_config=serve_payload if serve_enabled else None,
-        recommended_command=f"{binary} serve --bg 3000",
+        recommended_command=f"{binary} serve --bg {DEFAULT_ELEMATE_WEB_PORT}",
         recommended_script_path=str(TAILSCALE_SCRIPT_PATH),
         portal_auto_provisioning=True,
         identity_headers_expected=TAILSCALE_HEADERS,
     )
 
 
-def enable_tailscale_serve(*, local_port: int = 3000) -> TailscaleServeApplyResultOut:
+def enable_tailscale_serve(*, local_port: int = DEFAULT_ELEMATE_WEB_PORT) -> TailscaleServeApplyResultOut:
     binary = _tailscale_binary()
     if binary is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tailscale CLI is not installed on this machine.")
@@ -143,7 +152,7 @@ def enable_tailscale_serve(*, local_port: int = 3000) -> TailscaleServeApplyResu
     approval_url = _extract_first_url(output)
 
     status_payload = get_tailscale_status()
-    if status_payload.serve_enabled and status_payload.serve_url:
+    if status_payload.serve_enabled and status_payload.serve_matches_runtime and status_payload.serve_url:
         return TailscaleServeApplyResultOut(
             success=True,
             message=completed.stdout.strip() or "Tailscale Serve is enabled.",
@@ -305,3 +314,41 @@ def _extract_first_url(text: str) -> str | None:
     if not match:
         return None
     return match.group(0).rstrip(").,")
+
+
+def _extract_serve_hosts_and_target(serve_payload: dict) -> tuple[list[str], str | None]:
+    web_payload = serve_payload.get("Web") if isinstance(serve_payload.get("Web"), dict) else {}
+    hosts: list[str] = []
+    target: str | None = None
+    for host_key, config in web_payload.items():
+        if not isinstance(config, dict):
+            continue
+        hostname = str(host_key).split(":", 1)[0].rstrip(".")
+        if hostname and hostname not in hosts:
+            hosts.append(hostname)
+        handlers = config.get("Handlers") if isinstance(config.get("Handlers"), dict) else {}
+        root_handler = handlers.get("/") if isinstance(handlers.get("/"), dict) else {}
+        proxy = _string_or_none(root_handler.get("Proxy"))
+        if proxy and target is None:
+            target = proxy
+    return hosts, target
+
+
+def _matching_serve_url(serve_payload: dict, *, local_port: int) -> str | None:
+    expected_targets = {
+        f"http://127.0.0.1:{local_port}",
+        f"http://localhost:{local_port}",
+    }
+    web_payload = serve_payload.get("Web") if isinstance(serve_payload.get("Web"), dict) else {}
+    for host_key, config in web_payload.items():
+        if not isinstance(config, dict):
+            continue
+        handlers = config.get("Handlers") if isinstance(config.get("Handlers"), dict) else {}
+        root_handler = handlers.get("/") if isinstance(handlers.get("/"), dict) else {}
+        proxy = _string_or_none(root_handler.get("Proxy"))
+        if proxy not in expected_targets:
+            continue
+        hostname = str(host_key).split(":", 1)[0].rstrip(".")
+        if hostname:
+            return f"https://{hostname}"
+    return None

@@ -121,8 +121,9 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     if (!pendingRemoteSetupRef.current || remoteAutoEnableBusyRef.current) {
       return;
     }
-    if (!tailscaleStatus?.logged_in || tailscaleStatus.serve_enabled) {
-      if (tailscaleStatus?.serve_enabled) {
+    const serveReady = Boolean(tailscaleStatus?.serve_enabled && tailscaleStatus?.serve_matches_runtime);
+    if (!tailscaleStatus?.logged_in || serveReady) {
+      if (serveReady) {
         pendingRemoteSetupRef.current = false;
       }
       return;
@@ -142,7 +143,7 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
         remoteAutoEnableBusyRef.current = false;
       }
     })();
-  }, [tailscaleStatus?.logged_in, tailscaleStatus?.serve_enabled, variant]);
+  }, [tailscaleStatus?.logged_in, tailscaleStatus?.serve_enabled, tailscaleStatus?.serve_matches_runtime, variant]);
 
   function formatDesktopErrorMessage(error: unknown, fallback: string): string {
     if (!(error instanceof Error)) {

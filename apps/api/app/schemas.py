@@ -406,6 +406,9 @@ class TailscaleStatusOut(BaseModel):
     current_user_login: str | None
     current_user_name: str | None
     serve_enabled: bool
+    serve_matches_runtime: bool
+    serve_target: str | None
+    serve_hosts: list[str]
     serve_url: str | None
     serve_config: dict | None
     recommended_command: str | None

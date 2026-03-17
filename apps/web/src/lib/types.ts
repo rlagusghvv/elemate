@@ -490,6 +490,9 @@ export interface TailscaleStatus {
   current_user_login: string | null;
   current_user_name: string | null;
   serve_enabled: boolean;
+  serve_matches_runtime: boolean;
+  serve_target: string | null;
+  serve_hosts: string[];
   serve_url: string | null;
   serve_config: Record<string, unknown> | null;
   recommended_command: string | null;

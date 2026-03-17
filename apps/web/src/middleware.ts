@@ -15,7 +15,13 @@ export function middleware(request: NextRequest) {
   }
 
   if (process.env.ELEMATE_PUBLIC_SITE_MODE !== "landing-only") {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    if (pathname === "/portal" || pathname.startsWith("/portal/")) {
+      response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      response.headers.set("Pragma", "no-cache");
+      response.headers.set("Expires", "0");
+    }
+    return response;
   }
 
   if (!RESTRICTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {

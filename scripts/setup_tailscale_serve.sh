@@ -11,7 +11,9 @@ if ! tailscale status --json >/tmp/elemate-tailscale-status.json 2>/dev/null; th
   exit 1
 fi
 
-tailscale serve --bg 3000
+LOCAL_WEB_PORT="${ELEMATE_LOCAL_WEB_PORT:-${FORGE_LOCAL_WEB_PORT:-43115}}"
+
+tailscale serve --bg "$LOCAL_WEB_PORT"
 
 echo
 echo "휴대폰 접속이 설정되었습니다."

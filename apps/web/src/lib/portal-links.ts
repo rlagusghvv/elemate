@@ -1,4 +1,5 @@
 import type { Portal, TailscaleStatus } from "@/lib/types";
+import { WEB_APP_VERSION } from "@/lib/build-info";
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
@@ -7,7 +8,8 @@ function trimTrailingSlash(value: string): string {
 export function buildPortalLink(baseOrigin: string, slug?: string | null): string {
   const normalized = trimTrailingSlash(baseOrigin);
   const cleanSlug = slug?.trim();
-  return cleanSlug ? `${normalized}/portal/${cleanSlug}` : `${normalized}/portal`;
+  const basePath = cleanSlug ? `${normalized}/portal/${cleanSlug}` : `${normalized}/portal`;
+  return `${basePath}?v=${encodeURIComponent(WEB_APP_VERSION)}`;
 }
 
 function isLocalOrigin(value: string | null | undefined): boolean {
@@ -30,7 +32,7 @@ export function resolvePortalLink(
   const slug = portal?.slug?.trim();
   const tailscaleReadable = Boolean(tailscaleStatus?.status_readable);
   const serveUrl =
-    tailscaleReadable && tailscaleStatus?.serve_enabled && tailscaleStatus.serve_url && !isLocalOrigin(tailscaleStatus.serve_url)
+    tailscaleReadable && tailscaleStatus?.serve_enabled && tailscaleStatus?.serve_matches_runtime && tailscaleStatus.serve_url && !isLocalOrigin(tailscaleStatus.serve_url)
       ? trimTrailingSlash(tailscaleStatus.serve_url)
       : null;
   const portalUrl =

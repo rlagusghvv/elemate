@@ -51,7 +51,7 @@ export function TailscaleAccessPanel({
             </p>
           </div>
           <div className="hero-pill text-sm text-ink">
-            {tailscaleStatus?.serve_enabled ? "실시간 접속 준비됨" : "Serve 세팅 필요"}
+            {tailscaleStatus?.serve_enabled && tailscaleStatus?.serve_matches_runtime ? "실시간 접속 준비됨" : "Serve 세팅 필요"}
           </div>
         </div>
       </div>
@@ -123,8 +123,8 @@ export function TailscaleAccessPanel({
           <div className="mt-4 grid gap-3 xl:grid-cols-2">
             <div className="rounded-[20px] border border-white/8 bg-white/[0.04] px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-steel">Recommended Command</p>
-              <p className="mt-3 font-mono text-sm text-ink">{tailscaleStatus?.recommended_command || "tailscale serve --bg 3000"}</p>
-              <p className="mt-2 text-sm leading-6 text-steel">웹과 API는 same-origin 프록시로 묶여 있으니 3000 포트만 열면 됩니다.</p>
+              <p className="mt-3 font-mono text-sm text-ink">{tailscaleStatus?.recommended_command || "tailscale serve --bg 43115"}</p>
+              <p className="mt-2 text-sm leading-6 text-steel">EleMate는 데스크탑 전용 로컬 포트를 사용하므로, 이 명령으로 앱 화면만 안전하게 외부에 열면 됩니다.</p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.04] px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-steel">Bootstrap Script</p>

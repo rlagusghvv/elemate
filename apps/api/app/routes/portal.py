@@ -43,7 +43,7 @@ def _preferred_external_origin(candidate: str) -> str:
     normalized = candidate.rstrip("/")
     if _is_local_origin(normalized):
         tailscale_status = get_tailscale_status()
-        if tailscale_status.serve_enabled and tailscale_status.serve_url:
+        if tailscale_status.serve_enabled and tailscale_status.serve_matches_runtime and tailscale_status.serve_url:
             return tailscale_status.serve_url.rstrip("/")
     return normalized
 

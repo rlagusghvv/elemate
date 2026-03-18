@@ -543,18 +543,18 @@ export function SetupWizard({
               </p>
               <p className="ui-copy-sm mt-3 break-all">
                 {!remoteAppInstalled
-                  ? "이 장비에 원격 연결 앱이 아직 없습니다. 버튼을 누르면 설치 페이지를 열고, 설치 후 다시 확인하면 됩니다."
+                  ? "이 장비에 Tailscale이 아직 없습니다. 버튼을 누르면 설치 페이지를 열고, 설치 후 다시 확인하면 됩니다."
                   : !remoteStatusReadable
-                  ? "Tailscale 앱은 설치돼 있지만 현재 이 Mac에서 정상 상태를 읽지 못했습니다. Tailscale 앱 자체를 직접 열어 로그인 상태를 확인하거나 다시 시작한 뒤 다시 확인하세요."
+                  ? "이 Mac에서 Tailscale 상태를 아직 제대로 읽지 못했습니다. 메뉴바의 Tailscale 앱이 로그인된 상태인지 먼저 확인한 뒤 다시 확인하세요."
                   : manualRemoteSavedOnly
-                  ? "휴대폰 접속 주소는 저장됐지만, 실제로 연결이 열렸는지 아직 확인되지 않았습니다."
+                  ? "휴대폰에서 열 주소는 저장했지만, 실제로 연결이 켜졌는지는 아직 확인되지 않았습니다."
                   : !remoteLoggedIn
-                  ? "원격 연결 버튼을 누르면 로그인 흐름을 직접 시작합니다. 로그인과 허용을 마친 뒤 이 창으로 돌아오면 상태를 다시 읽습니다."
+                  ? "로그인 버튼을 누르면 Tailscale 로그인 화면이 열립니다. 이 Mac에서 먼저 로그인한 뒤, 여기로 돌아와 다시 확인하세요."
                   : !remoteRunning
-                    ? "이 장비는 이미 내 원격 연결 계정에 묶여 있지만 현재 연결이 꺼져 있습니다. 버튼을 누르면 다시 연결을 시작합니다."
+                    ? "이 Mac의 Tailscale 연결이 지금 꺼져 있습니다. 버튼을 누르면 다시 켭니다."
                   : remoteLinkReady
                     ? linkValue || "개인 링크가 준비되었습니다."
-                    : "한 번만 켜 두면 앞으로는 휴대폰에서 바로 접속할 수 있습니다. 처음 한 번은 Tailscale Serve 승인 페이지가 열릴 수 있습니다."}
+                    : "거의 끝났습니다. 마지막으로 휴대폰 접속 켜기를 눌러 휴대폰 링크를 만드세요. 처음 한 번은 Tailscale 승인 페이지가 열릴 수 있습니다."}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(remoteAppInstalled)}`}>
@@ -569,34 +569,34 @@ export function SetupWizard({
               </div>
               {!remoteLinkReady ? (
                 <p className="ui-copy-sm mt-3 text-white/62">
-                  휴대폰에도 Tailscale 앱을 설치하고 같은 계정으로 로그인해야 합니다. 아래 QR로 바로 설치 페이지를 열 수 있습니다.
+                  휴대폰에도 Tailscale 앱이 있어야 합니다. 아래 QR을 휴대폰으로 찍어 설치하고, 이 Mac과 같은 계정으로 로그인하세요.
                 </p>
               ) : null}
               {!remoteLinkReady ? (
                 <div className="mt-4 rounded-[20px] border border-white/10 bg-black/20 px-4 py-4">
                   <p className="ui-copy-sm text-white/78">
                     {canAutoAppendTailnet
-                      ? "자동 감지가 안 되면 Tailscale에 보이는 내 기기 이름만 넣어서 주소를 만들 수 있습니다."
-                      : "자동 감지가 안 되면 Tailscale의 기기 전체 주소를 한 줄만 붙여 넣으면 됩니다."}
+                      ? "자동으로 안 잡히면 Tailscale에 보이는 이 Mac의 이름만 넣으면 됩니다."
+                      : "자동으로 안 잡히면 Tailscale에서 이 Mac의 전체 주소를 한 번만 복사해 넣으면 됩니다."}
                   </p>
                   <p className="ui-copy-sm mt-2 text-white/58">
                     {canAutoAppendTailnet ? (
                       <>
                         1. Mac 메뉴바에서 Tailscale 아이콘을 누릅니다.
                         <br />
-                        2. <span className="font-semibold text-white/82">This Device: macbookpro-1</span> 같은 줄에서 기기 이름만 확인합니다.
+                        2. <span className="font-semibold text-white/82">This Device: macbookpro-1</span> 같은 줄에서 이름만 봅니다.
                         <br />
-                        3. 그 기기 이름만 아래 칸에 넣으면 EleMate가 <span className="font-mono text-white/82">{knownTailnetDomain}</span> 를 자동으로 붙입니다.
+                        3. 그 이름만 아래 칸에 넣으면 EleMate가 <span className="font-mono text-white/82">{knownTailnetDomain}</span> 를 자동으로 붙여 주소를 만듭니다.
                       </>
                     ) : (
                       <>
-                        1. <span className="font-semibold text-white/82">Tailscale Admin Console</span>을 엽니다.
+                        1. <span className="font-semibold text-white/82">Tailscale 관리 화면</span>을 엽니다.
                         <br />
-                        2. <span className="font-semibold text-white/82">Machines</span> 페이지에서 이 Mac을 클릭합니다.
+                        2. <span className="font-semibold text-white/82">Machines</span>에서 이 Mac을 누릅니다.
                         <br />
                         3. <span className="font-semibold text-white/82">Full domain name</span> 을 그대로 복사합니다.
                         <br />
-                        4. 예시: <span className="font-mono text-white/82">macmini.tail4fbf54.ts.net</span>
+                        4. 예: <span className="font-mono text-white/82">macmini.tail4fbf54.ts.net</span>
                       </>
                     )}
                   </p>
@@ -607,8 +607,8 @@ export function SetupWizard({
                   ) : null}
                   <p className="ui-copy-sm mt-2 text-white/58">
                     {canAutoAppendTailnet
-                      ? "기기 이름만 정확하면 EleMate가 https를 붙이고 실제 휴대폰 링크와 QR을 바로 만듭니다."
-                      : "이 값은 Tailscale Admin Console의 Machines 페이지에서 확인할 수 있습니다. EleMate가 https를 붙이고 /portal 링크와 QR을 자동으로 만듭니다."}
+                      ? "이름만 맞으면 EleMate가 휴대폰 링크와 QR을 바로 만듭니다."
+                      : "이 값을 붙여 넣으면 EleMate가 휴대폰 링크와 QR을 바로 만듭니다."}
                   </p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-1">
                     <input
@@ -636,7 +636,7 @@ export function SetupWizard({
                           onClick={() => window.open("https://login.tailscale.com/admin/machines", "_blank", "noopener,noreferrer")}
                           className="ui-button-secondary px-4 py-2.5"
                         >
-                          기기 주소 찾기
+                          Tailscale 기기 주소 찾기
                         </button>
                         <button
                           type="button"
@@ -653,7 +653,7 @@ export function SetupWizard({
                       disabled={!builtRemoteOrigin || isBusy}
                       className="ui-button-secondary px-4 py-2.5 disabled:cursor-not-allowed disabled:opacity-45"
                     >
-                      주소 만들고 저장
+                      링크 만들기
                     </button>
                   </div>
                   <p className="ui-copy-sm mt-3 break-all text-white/72">
@@ -663,8 +663,8 @@ export function SetupWizard({
                       </>
                     ) : (
                       canAutoAppendTailnet
-                        ? "기기 이름만 넣으면 EleMate가 휴대폰 접속 주소를 자동으로 만듭니다."
-                        : "기기 전체 주소를 붙여 넣으면 EleMate가 휴대폰 접속 주소와 QR을 자동으로 만듭니다."
+                        ? "이름만 넣으면 EleMate가 휴대폰 링크를 자동으로 만듭니다."
+                        : "기기 전체 주소를 붙여 넣으면 EleMate가 휴대폰 링크를 자동으로 만듭니다."
                     )}
                   </p>
                 </div>
@@ -736,9 +736,9 @@ export function SetupWizard({
           {!remoteLinkReady && previewPortalLink ? (
             <div className="mt-5 rounded-[22px] border border-amber-400/18 bg-amber-500/8 px-4 py-4">
               <p className="ui-copy-sm text-amber-50/88">
-                아래 주소는 아직 예상 주소입니다. 지금 단계에서는 QR이나 접속 링크를 만들지 않습니다. 먼저
+                아래 주소는 아직 예상 주소입니다. 지금은 휴대폰에서 바로 열리지 않을 수 있습니다. 먼저
                 <span className="font-semibold text-amber-50"> 휴대폰 접속 켜기</span>
-                를 눌러 Tailscale Serve가 실제로 켜져야 최종 링크와 QR이 생성됩니다.
+                를 눌러 실제 링크를 켜세요. 그 다음 최종 링크와 QR이 생성됩니다.
               </p>
               <p className="ui-copy-sm mt-3 break-all text-amber-50/72">
                 예상 주소: <span className="font-mono text-amber-50/90">{previewPortalLink}</span>
@@ -750,7 +750,7 @@ export function SetupWizard({
               <div className="flex flex-col items-center gap-3 text-center">
                 <img src={mobileSetupQrDataUrl} alt="Tailscale mobile install QR code" className="h-[180px] w-[180px]" />
                 <p className="ui-copy-sm max-w-[30ch] text-white/72">
-                  휴대폰으로 스캔해서 Tailscale 앱을 설치한 뒤, 이 Mac과 같은 계정으로 로그인하세요.
+                  휴대폰으로 스캔해 Tailscale을 설치하고, 이 Mac과 같은 계정으로 로그인한 뒤 다시 돌아오세요.
                 </p>
               </div>
             </div>

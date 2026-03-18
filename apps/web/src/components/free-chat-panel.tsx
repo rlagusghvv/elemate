@@ -44,7 +44,7 @@ const PORTAL_SUGGESTIONS = [
   "사이트 설정 방법을 먼저 조사해줘.",
 ];
 const PORTAL_TASK_STORAGE_KEY = "elemate.portal.active-task-id";
-const PORTAL_FEED_STORAGE_KEY = "elemate.portal.feed.v3";
+const PORTAL_FEED_STORAGE_KEY = "elemate.portal.feed.v4";
 
 function createPortalBubble(role: PortalBubble["role"], content: string, tone: PortalBubbleTone = "default"): PortalBubble {
   return {
@@ -119,7 +119,7 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
     setPortalFeed([
       createPortalBubble(
         "assistant",
-        "무엇을 도와드릴까요? 해야 할 일을 한 문장으로 보내면 바로 실행을 시작하고, 위험한 단계만 승인 요청 후 멈춥니다.",
+        "무엇을 맡기실 건가요? 편하게 보내시면 바로 움직입니다.",
       ),
     ]);
   }, [compact]);
@@ -281,7 +281,7 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
 
   const latestReplyHint = useMemo(() => {
     if (compact) {
-      return "이 화면은 처음부터 실행용입니다. 한 줄로 맡기면 바로 작업을 만들고, 위험한 단계만 승인 요청 후 멈춥니다.";
+      return "내 비서에게 말하듯 보내면 바로 실행을 시작합니다.";
     }
     if (!activeSession?.messages.length) {
       return "정확한 파일 작업을 원하면 먼저 왼쪽에서 폴더를 연결하세요.";
@@ -345,7 +345,6 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
       setPortalFeed((current) => [
         ...current,
         createPortalBubble("user", nextDraft),
-        createPortalBubble("assistant", "알겠습니다. 바로 확인하고 움직일게요.", "status"),
       ]);
     }
     setIsExecuting(true);
@@ -420,14 +419,8 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
     try {
       if (approved) {
         await approveTask(activeTask.id, { decided_by: "portal-user" });
-        if (compact) {
-          setPortalFeed((current) => [...current, createPortalBubble("assistant", "승인 확인했습니다. 바로 이어서 진행할게요.", "status")]);
-        }
       } else {
         await rejectTask(activeTask.id, { decided_by: "portal-user" });
-        if (compact) {
-          setPortalFeed((current) => [...current, createPortalBubble("assistant", "여기서 멈출게요. 다른 방식으로 다시 맡기셔도 됩니다.", "status")]);
-        }
       }
       setActiveTask(await fetchTask(activeTask.id));
     } catch (approvalError) {
@@ -559,7 +552,7 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
             <span className="ui-chip px-3 py-1.5">
               승인 필요 작업은 중간에 멈춥니다
             </span>
-            {compact ? <span className="ui-chip px-3 py-1.5">대화처럼 보내면 바로 실행을 시작합니다</span> : null}
+            {compact ? <span className="ui-chip px-3 py-1.5">말투는 편하게, 실행은 바로</span> : null}
           </div>
         </div>
 
@@ -681,7 +674,13 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
               })}
               {isSending ? (
                 <div className="flex justify-start">
-                  <div className="rounded-[22px] border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-steel">답변 작성 중...</div>
+                  <div className="rounded-[24px] border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-steel">
+                    <div className="portal-typing-dots" aria-label="에이전트 입력중">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                  </div>
                 </div>
               ) : null}
               <div ref={messageEndRef} />
@@ -695,7 +694,7 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
                 <h3 className="ui-title-section mt-6">무엇을 도와드릴까요?</h3>
                 <p className="ui-copy-sm mx-auto mt-3 max-w-2xl">
                   {compact
-                    ? "해야 할 일을 한 문장으로 적으면 바로 실행 작업을 시작합니다. 정확한 파일 작업은 연결된 폴더를 기준으로, 위험한 작업은 승인 요청 후에 진행합니다."
+                    ? "편하게 보내면 바로 실행을 시작합니다. 위험한 단계만 중간에 확인받고 멈춥니다."
                     : "해야 할 일을 한 문장으로 적어도 됩니다. 정확한 파일 작업은 연결된 폴더를 기준으로, 위험한 작업은 승인 요청 후에 진행합니다."}
                 </p>
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -730,7 +729,7 @@ export function FreeChatPanel({ workspacePath, compact = false }: FreeChatPanelP
               className="h-28 w-full resize-none rounded-[22px] border border-white/8 bg-[#09101a] px-4 py-4 text-[15px] leading-7 text-ink outline-none transition placeholder:text-steel focus:border-sky-300/34"
             />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 px-1">
-              <p className="text-xs text-steel">{compact ? "메시지를 보내면 바로 실행합니다. Shift+Enter만 줄바꿈입니다." : "Enter 전송, Shift+Enter 줄바꿈"}</p>
+              <p className="text-xs text-steel">{compact ? "Enter 실행, Shift+Enter 줄바꿈" : "Enter 전송, Shift+Enter 줄바꿈"}</p>
               <div className="flex flex-wrap items-center gap-2">
                 {compact ? (
                   <button

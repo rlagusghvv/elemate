@@ -18,7 +18,9 @@ def get_onboarding_status() -> OnboardingStatusOut:
     state = _read_state()
     workspace_path = _load_workspace_path(state, runtime.workspace_root)
     remote_origin = _load_remote_origin(state)
-    auth_ready = runtime.codex_login_configured
+    chatgpt_login_ready = runtime.codex_login_configured
+    api_key_ready = runtime.openai_api_key_configured
+    auth_ready = chatgpt_login_ready or api_key_ready
     workspace_ready = workspace_path is not None
     workspace_access_ready = bool(state.get("workspace_access_ready")) and workspace_ready
     browser_ready = runtime.browser_available
@@ -32,11 +34,7 @@ def get_onboarding_status() -> OnboardingStatusOut:
             title="AI 연결",
             description="당신 계정으로 에이전트가 대화하고 작업할 수 있게 연결합니다.",
             status="done" if auth_ready else "blocked",
-            detail=(
-                f"{runtime.auth_account_email or '계정 정보 확인됨'} · {runtime.auth_plan_type or 'plan 정보 없음'}"
-                if auth_ready
-                else "데스크탑 앱에서 AI 연결을 시작하거나, 직접 로그인 명령을 실행해 주세요."
-            ),
+            detail=_auth_detail(runtime, auth_ready=auth_ready, chatgpt_login_ready=chatgpt_login_ready, api_key_ready=api_key_ready),
         ),
         OnboardingStepOut(
             key="workspace",
@@ -80,8 +78,10 @@ def get_onboarding_status() -> OnboardingStatusOut:
         completed_at=completed_at,
         workspace_path=workspace_path,
         remote_origin=remote_origin,
-        codex_login_required=True,
+        codex_login_required=False,
         auth_ready=auth_ready,
+        chatgpt_login_ready=chatgpt_login_ready,
+        api_key_ready=api_key_ready,
         workspace_ready=workspace_ready,
         workspace_access_ready=workspace_access_ready,
         browser_ready=browser_ready,
@@ -138,7 +138,9 @@ def _build_status_from_state(state: dict, workspace_root: str) -> OnboardingStat
     runtime = get_runtime_status()
     workspace_path = _load_workspace_path(state, workspace_root)
     remote_origin = _load_remote_origin(state)
-    auth_ready = runtime.codex_login_configured
+    chatgpt_login_ready = runtime.codex_login_configured
+    api_key_ready = runtime.openai_api_key_configured
+    auth_ready = chatgpt_login_ready or api_key_ready
     workspace_ready = workspace_path is not None
     workspace_access_ready = bool(state.get("workspace_access_ready")) and workspace_ready
     browser_ready = runtime.browser_available
@@ -149,8 +151,10 @@ def _build_status_from_state(state: dict, workspace_root: str) -> OnboardingStat
         completed_at=completed_at,
         workspace_path=workspace_path,
         remote_origin=remote_origin,
-        codex_login_required=True,
+        codex_login_required=False,
         auth_ready=auth_ready,
+        chatgpt_login_ready=chatgpt_login_ready,
+        api_key_ready=api_key_ready,
         workspace_ready=workspace_ready,
         workspace_access_ready=workspace_access_ready,
         browser_ready=browser_ready,
@@ -166,6 +170,16 @@ def _build_status_from_state(state: dict, workspace_root: str) -> OnboardingStat
         browser_channel=runtime.browser_channel,
         steps=[],
     )
+
+
+def _auth_detail(runtime, *, auth_ready: bool, chatgpt_login_ready: bool, api_key_ready: bool) -> str:
+    if not auth_ready:
+        return "ChatGPT 로그인이나 OpenAI API 키 중 하나면 됩니다. Pro가 없어도 API 키만 있으면 바로 사용할 수 있습니다."
+    if api_key_ready and not chatgpt_login_ready:
+        return "OpenAI API 키가 이 장비에 저장되어 있습니다."
+    if chatgpt_login_ready and not api_key_ready:
+        return f"{runtime.auth_account_email or 'ChatGPT 로그인 연결됨'} · {runtime.auth_plan_type or 'plan 정보 없음'}"
+    return f"{runtime.auth_account_email or 'ChatGPT 로그인 연결됨'} + OpenAI API 키 둘 다 준비되었습니다."
 
 
 def _read_state() -> dict:

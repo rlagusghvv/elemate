@@ -1,6 +1,7 @@
 import type {
   AgentPreset,
   AgentPresetCreateInput,
+  ApiKeyUpdateInput,
   Approval,
   ApprovalDecisionInput,
   BrowserPreview,
@@ -241,6 +242,19 @@ export function updateRuntimePreference(payload: RuntimePreferenceInput): Promis
 export function logoutCodexAuth(): Promise<Capabilities> {
   return apiRequest<Capabilities>("/auth/logout", {
     method: "POST",
+  });
+}
+
+export function saveApiKey(payload: ApiKeyUpdateInput): Promise<Capabilities> {
+  return apiRequest<Capabilities>("/auth/api-key", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function clearApiKey(): Promise<Capabilities> {
+  return apiRequest<Capabilities>("/auth/api-key", {
+    method: "DELETE",
   });
 }
 

@@ -37,7 +37,7 @@ export function NavBar() {
             href={BRAND_DOWNLOAD_URL}
             className="ui-button-primary min-h-10 px-4 py-2"
           >
-            Mac 다운로드
+            다운로드
           </Link>
         </nav>
       </div>

@@ -25,6 +25,8 @@ interface SetupWizardProps {
   statusMessage: string | null;
   onRefresh: () => void;
   onOpenChatLogin: () => void;
+  onSaveApiKey: (value: string) => void;
+  onClearApiKey: () => void;
   onOpenWorkspacePicker: () => void;
   onOpenRemoteAccessApp: () => void;
   onStartRemoteAccessFlow: () => void;
@@ -127,6 +129,8 @@ export function SetupWizard({
   statusMessage,
   onRefresh,
   onOpenChatLogin,
+  onSaveApiKey,
+  onClearApiKey,
   onOpenWorkspacePicker,
   onOpenRemoteAccessApp,
   onStartRemoteAccessFlow,
@@ -145,6 +149,7 @@ export function SetupWizard({
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [mobileSetupQrDataUrl, setMobileSetupQrDataUrl] = useState<string | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState("");
   const savedRemoteParts = splitRemoteOrigin(onboarding?.remote_origin || "");
   const savedRemoteHost = extractRemoteHostname(onboarding?.remote_origin || "");
   const suggestedDeviceName =
@@ -176,6 +181,8 @@ export function SetupWizard({
   const runtimeBusy = bundledRuntime ? bundledRuntime.api.status === "installing" || bundledRuntime.api.status === "starting" : false;
   const authState = desktopStatus?.runtime?.auth;
   const workspaceName = selectedWorkspace.split("/").filter(Boolean).at(-1) || null;
+  const apiKeyReady = Boolean(onboarding?.api_key_ready);
+  const chatgptLoginReady = Boolean(onboarding?.chatgpt_login_ready);
   const currentTailnet = tailscaleStatus?.current_tailnet || "";
   const knownTailnetDomain = currentTailnet || savedRemoteParts.tailnetDomain;
   const canAutoAppendTailnet = Boolean(knownTailnetDomain);
@@ -444,34 +451,85 @@ export function SetupWizard({
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="eyebrow">02 AI 연결</p>
-              <p className="ui-title-card mt-3">{onboarding?.auth_ready ? "내 계정 연결 완료" : "AI 연결하기"}</p>
+              <p className="ui-title-card mt-3">
+                {onboarding?.auth_ready
+                  ? apiKeyReady && !chatgptLoginReady
+                    ? "API 키 연결 완료"
+                    : apiKeyReady && chatgptLoginReady
+                      ? "계정과 API 키 모두 연결 완료"
+                      : "내 계정 연결 완료"
+                  : "AI 연결하기"}
+              </p>
               <p className="ui-copy-sm mt-3">
                 {onboarding?.auth_ready
-                  ? onboarding.auth_account_email || "이 장비가 내 계정으로 답변합니다."
+                  ? apiKeyReady && !chatgptLoginReady
+                    ? "OpenAI API 키가 이 장비에 저장되어 있습니다. Pro 구독 없이도 바로 사용할 수 있습니다."
+                    : apiKeyReady && chatgptLoginReady
+                      ? "ChatGPT 로그인과 OpenAI API 키가 모두 준비되었습니다. 기본 자동 모드는 API 키를 먼저 사용합니다."
+                      : onboarding.auth_account_email || "이 장비가 내 ChatGPT 계정으로 답변합니다."
                   : authState?.status === "waiting_browser"
                     ? authState.message || "브라우저에서 로그인과 권한 확인을 끝내고 이 창으로 돌아오면 자동으로 연결 상태를 확인합니다."
                     : authState?.status === "starting"
                       ? authState.message || "브라우저 연결을 준비하고 있습니다."
-                      : "버튼을 누르면 브라우저가 열립니다. 로그인 뒤 이 창으로 돌아오면 연결 완료 여부가 바로 반영됩니다."}
+                      : "ChatGPT 로그인이나 OpenAI API 키 중 하나면 됩니다. API 키만 있어도 바로 사용할 수 있습니다."}
               </p>
               {onboarding?.auth_ready ? (
-                <p className="ui-copy-sm mt-2 text-emerald-100/88">정상 연결되면 이 카드가 완료 상태로 바뀌고 계정 이메일이 표시됩니다.</p>
+                <p className="ui-copy-sm mt-2 text-emerald-100/88">
+                  {apiKeyReady
+                    ? "API 키는 이 장비 안에만 저장됩니다. 필요하면 여기서 바로 바꿀 수 있습니다."
+                    : "정상 연결되면 이 카드가 완료 상태로 바뀌고 계정 이메일이 표시됩니다."}
+                </p>
               ) : null}
             </div>
             <span className={`ui-chip px-3 py-1.5 text-[11px] font-semibold ${statusTone(Boolean(onboarding?.auth_ready))}`}>
               {statusLabel(Boolean(onboarding?.auth_ready))}
             </span>
           </div>
-          {!onboarding?.auth_ready ? (
-            <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-5 flex flex-wrap gap-2">
+            {!onboarding?.chatgpt_login_ready ? (
               <button type="button" onClick={onOpenChatLogin} className="ui-button-primary px-4 py-2.5">
-                {authState?.status === "waiting_browser" ? "브라우저 다시 열기" : "AI 연결 시작"}
+                {authState?.status === "waiting_browser" ? "브라우저 다시 열기" : "ChatGPT로 연결"}
               </button>
-              <button type="button" onClick={onRefresh} className="ui-button-secondary px-4 py-2.5">
-                연결 상태 다시 확인
+            ) : null}
+            <button type="button" onClick={onRefresh} className="ui-button-secondary px-4 py-2.5">
+              연결 상태 다시 확인
+            </button>
+            {apiKeyReady ? (
+              <button type="button" onClick={onClearApiKey} className="ui-button-secondary px-4 py-2.5">
+                API 키 제거
+              </button>
+            ) : null}
+          </div>
+          <div className="mt-4 rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+            <p className="ui-copy-sm text-white/78">
+              Pro 없이 쓰려면 OpenAI API 키를 저장하면 됩니다. 키는 이 장비 안에만 저장됩니다.
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                type="password"
+                value={apiKeyInput}
+                onChange={(event) => setApiKeyInput(event.target.value)}
+                placeholder="sk-... 또는 프로젝트 API 키"
+                className="min-h-11 flex-1 rounded-full border border-white/12 bg-white/[0.04] px-4 text-sm text-white outline-none placeholder:text-white/35"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (!apiKeyInput.trim()) {
+                    return;
+                  }
+                  onSaveApiKey(apiKeyInput);
+                  setApiKeyInput("");
+                }}
+                disabled={!apiKeyInput.trim() || isBusy}
+                className="ui-button-secondary px-4 py-2.5 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                API 키 저장
               </button>
             </div>
-          ) : null}
+          </div>
         </article>
 
         <article className="ui-card">

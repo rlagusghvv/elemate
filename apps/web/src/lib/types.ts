@@ -169,6 +169,10 @@ export interface RuntimePreferenceInput {
   preferred_mode: "auto" | "codex" | "live" | "demo";
 }
 
+export interface ApiKeyUpdateInput {
+  api_key?: string | null;
+}
+
 export interface RuntimeDiagnostics {
   app_version: string;
   selected_mode: string;
@@ -339,6 +343,8 @@ export interface OnboardingStatus {
   remote_origin: string | null;
   codex_login_required: boolean;
   auth_ready: boolean;
+  chatgpt_login_ready: boolean;
+  api_key_ready: boolean;
   workspace_ready: boolean;
   workspace_access_ready: boolean;
   browser_ready: boolean;

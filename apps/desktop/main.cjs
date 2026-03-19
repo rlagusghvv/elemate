@@ -31,9 +31,11 @@ const API_DIR = REPO_ROOT ? path.join(REPO_ROOT, "apps", "api") : null;
 const WEB_URL = envFirst("ELEMATE_DESKTOP_WEB_URL", "FORGE_DESKTOP_WEB_URL") || `http://127.0.0.1:${DESKTOP_WEB_PORT}`;
 const API_URL = envFirst("ELEMATE_DESKTOP_API_URL", "FORGE_DESKTOP_API_URL") || `http://127.0.0.1:${DESKTOP_API_PORT}`;
 const DAEMON_LABEL = "com.elemate.agent.daemon";
-const PYTHON_DOWNLOAD_URL = "https://www.python.org/downloads/macos/";
+const PYTHON_DOWNLOAD_URL =
+  process.platform === "win32" ? "https://www.python.org/downloads/windows/" : "https://www.python.org/downloads/macos/";
 const CODEX_INSTALL_URL = "https://developers.openai.com/codex/cli";
-const TAILSCALE_DOWNLOAD_URL = "https://tailscale.com/download";
+const TAILSCALE_DOWNLOAD_URL =
+  process.platform === "win32" ? "https://tailscale.com/download/windows" : "https://tailscale.com/download";
 
 function getDesktopAppUrl() {
   try {
@@ -310,19 +312,26 @@ function writeJsonFile(filePath, payload) {
 
 function getPythonCommand() {
   if (!API_DIR) {
-    return "python3";
+    return process.platform === "win32" ? "python" : "python3";
   }
-  const venvPython = path.join(API_DIR, ".venv", "bin", "python");
-  if (fs.existsSync(venvPython)) {
-    return venvPython;
+
+  const candidates =
+    process.platform === "win32"
+      ? [path.join(API_DIR, ".venv", "Scripts", "python.exe"), path.join(API_DIR, ".venv", "python.exe")]
+      : [path.join(API_DIR, ".venv", "bin", "python")];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
   }
-  return "python3";
+  return process.platform === "win32" ? "python" : "python3";
 }
 
 function getSystemPythonCommand() {
   const candidates = [
     envFirst("ELEMATE_PYTHON", "FORGE_PYTHON"),
     "python3",
+    "python",
     "/opt/homebrew/bin/python3",
     "/usr/local/bin/python3",
     "/usr/bin/python3",
@@ -378,7 +387,7 @@ function spawnApiServer() {
   if (!API_DIR) {
     throw new Error("API workspace is unavailable in packaged mode. Set ELEMATE_REPO_ROOT or start the API separately.");
   }
-  if (!fs.existsSync(getPythonCommand()) && !findExecutable("python3")) {
+  if (!fs.existsSync(getPythonCommand()) && !findExecutable("python3") && !findExecutable("python")) {
     throw new Error(
       "EleMate를 열려면 먼저 기본 실행 도구가 필요합니다.\n\nPython 3를 설치한 뒤 다시 시도하세요.\n" + PYTHON_DOWNLOAD_URL,
     );
@@ -393,19 +402,24 @@ function spawnApiServer() {
 function packagedApiEnvironment(paths) {
   const pathEntries = [];
   const codexBinDir = path.join(paths.codexDir, "bin");
-  const pythonBinDir = path.join(paths.pythonDir, "bin");
+  const pythonBinDirs =
+    process.platform === "win32"
+      ? [path.join(paths.pythonDir, "Scripts"), paths.pythonDir]
+      : [path.join(paths.pythonDir, "bin")];
   if (fs.existsSync(codexBinDir)) {
     pathEntries.push(codexBinDir);
   }
-  if (fs.existsSync(pythonBinDir)) {
-    pathEntries.push(pythonBinDir);
+  for (const pythonBinDir of pythonBinDirs) {
+    if (fs.existsSync(pythonBinDir)) {
+      pathEntries.push(pythonBinDir);
+    }
   }
   if (process.env.PATH) {
     pathEntries.push(process.env.PATH);
   }
   return {
     ...process.env,
-    PATH: pathEntries.join(":"),
+    PATH: pathEntries.join(path.delimiter),
     DATABASE_URL: `sqlite:///${path.join(paths.dataDir, "elemate.db")}`,
     ELEMATE_BASE_DIR: paths.root,
     ELEMATE_DATA_DIR: paths.dataDir,
@@ -424,11 +438,19 @@ function getPackagedPythonCommand(paths) {
   if (!paths.pythonDir) {
     return null;
   }
-  const candidates = [
-    path.join(paths.pythonDir, "bin", "python3.11"),
-    path.join(paths.pythonDir, "bin", "python3"),
-    path.join(paths.pythonDir, "bin", "python"),
-  ];
+  const candidates =
+    process.platform === "win32"
+      ? [
+          path.join(paths.pythonDir, "python.exe"),
+          path.join(paths.pythonDir, "Scripts", "python.exe"),
+          path.join(paths.pythonDir, "python", "python.exe"),
+          path.join(paths.pythonDir, "install", "python.exe"),
+        ]
+      : [
+          path.join(paths.pythonDir, "bin", "python3.11"),
+          path.join(paths.pythonDir, "bin", "python3"),
+          path.join(paths.pythonDir, "bin", "python"),
+        ];
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
       return candidate;
@@ -441,8 +463,20 @@ function getPackagedCodexEntry(paths) {
   if (!paths.codexDir) {
     return null;
   }
-  const candidate = path.join(paths.codexDir, "bin", "codex");
-  return fs.existsSync(candidate) ? candidate : null;
+  const candidates =
+    process.platform === "win32"
+      ? [path.join(paths.codexDir, "bin", "codex.cmd"), path.join(paths.codexDir, "bin", "codex.exe")]
+      : [path.join(paths.codexDir, "bin", "codex")];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function getTarCommand() {
+  return findExecutable("tar") || "tar";
 }
 
 async function ensurePackagedPythonRuntime(paths) {
@@ -477,7 +511,7 @@ async function ensurePackagedPythonRuntime(paths) {
   fs.mkdirSync(paths.pythonDir, { recursive: true });
   appendLog(paths.bootstrapLogPath, `\n[${new Date().toISOString()}] Extracting bundled Python runtime\n`);
   await runCommand(
-    "/usr/bin/tar",
+    getTarCommand(),
     ["-xzf", paths.pythonArchivePath, "-C", paths.pythonDir],
     paths.root,
     "bundled python extract",
@@ -517,7 +551,7 @@ async function ensurePackagedCodexRuntime(paths) {
   fs.mkdirSync(paths.codexDir, { recursive: true });
   appendLog(paths.bootstrapLogPath, `\n[${new Date().toISOString()}] Extracting bundled AI auth runtime\n`);
   await runCommand(
-    "/usr/bin/tar",
+    getTarCommand(),
     ["-xzf", paths.codexArchivePath, "-C", paths.codexDir],
     paths.root,
     "bundled ai auth extract",
@@ -557,7 +591,7 @@ async function ensurePackagedWebRuntime(paths) {
   fs.mkdirSync(paths.webDir, { recursive: true });
   appendLog(paths.webLogPath, `\n[${new Date().toISOString()}] Extracting bundled web runtime\n`);
   await runCommand(
-    "/usr/bin/tar",
+    getTarCommand(),
     ["-xzf", paths.webArchivePath, "-C", paths.webDir],
     paths.root,
     "bundled web extract",
@@ -580,7 +614,7 @@ async function ensurePackagedWebRuntime(paths) {
 }
 
 function getFallbackBundledApiPython(paths) {
-  return path.join(paths.venvDir, "bin", "python");
+  return process.platform === "win32" ? path.join(paths.venvDir, "Scripts", "python.exe") : path.join(paths.venvDir, "bin", "python");
 }
 
 function getBundledApiPython(paths) {
@@ -832,19 +866,31 @@ function sleep(ms) {
 }
 
 function findExecutable(command) {
-  const result = spawnSync("which", [command], { encoding: "utf8" });
+  const resolver = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync(resolver, [command], { encoding: "utf8" });
   if (result.status === 0) {
-    return result.stdout.trim() || null;
+    const line = result.stdout
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .find(Boolean);
+    return line || null;
   }
   return null;
 }
 
 function findTailscaleBinary(options = {}) {
   const { requireReadableStatus = false } = options;
-  const candidates = [
-    "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
-    path.join(app.getPath("home"), "Applications", "Tailscale.app", "Contents", "MacOS", "Tailscale"),
-  ];
+  const candidates =
+    process.platform === "win32"
+      ? [
+          path.join(process.env.ProgramFiles || "C:\\Program Files", "Tailscale", "tailscale.exe"),
+          path.join(process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", "Tailscale", "tailscale.exe"),
+          path.join(process.env.LocalAppData || "", "Tailscale", "tailscale.exe"),
+        ]
+      : [
+          "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+          path.join(app.getPath("home"), "Applications", "Tailscale.app", "Contents", "MacOS", "Tailscale"),
+        ];
   const external = findExecutable("tailscale");
   if (external) {
     candidates.push(external);
@@ -881,7 +927,7 @@ function toShellCommand(command, args = []) {
 }
 
 function readTailscaleStatus(binary) {
-  const result = spawnSync("/bin/zsh", ["-lc", toShellCommand(binary, ["status", "--json"])], { encoding: "utf8" });
+  const result = spawnSync(binary, ["status", "--json"], { encoding: "utf8" });
   if (result.status !== 0) {
     return null;
   }
@@ -894,15 +940,33 @@ function readTailscaleStatus(binary) {
 }
 
 function launchDetachedCommand(command, args, extraEnv = {}) {
-  const child = spawn("/bin/zsh", ["-lc", toShellCommand(command, args)], {
+  const child = spawn(command, args, {
     detached: true,
     stdio: "ignore",
     env: { ...process.env, ...extraEnv },
+    shell: process.platform === "win32" && command.toLowerCase().endsWith(".cmd"),
   });
   child.unref();
 }
 
 function openTailscaleApp() {
+  if (process.platform === "win32") {
+    const candidates = [
+      path.join(process.env.ProgramFiles || "C:\\Program Files", "Tailscale", "Tailscale IPN.exe"),
+      path.join(process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", "Tailscale", "Tailscale IPN.exe"),
+      path.join(process.env.LocalAppData || "", "Tailscale", "Tailscale IPN.exe"),
+    ];
+    for (const candidate of candidates) {
+      if (!candidate || !fs.existsSync(candidate)) {
+        continue;
+      }
+      const result = spawnSync(process.env.ComSpec || "cmd.exe", ["/d", "/c", "start", "", candidate], { encoding: "utf8" });
+      if (result.status === 0) {
+        return true;
+      }
+    }
+    return false;
+  }
   const byName = spawnSync("/usr/bin/open", ["-a", "Tailscale"], { encoding: "utf8" });
   if (byName.status === 0) {
     return true;
@@ -976,7 +1040,7 @@ async function resolveAiAuthCommand() {
 
 function mapSpawnError(command, label, error) {
   if (error && error.code === "ENOENT") {
-    if (command === "python3" || command.endsWith("/python")) {
+    if (command === "python3" || command === "python" || command.endsWith("/python") || command.endsWith("\\python.exe")) {
       return new Error(`EleMate ${label}를 계속하려면 Python 3.11 이상이 필요합니다.\n\n설치 페이지:\n${PYTHON_DOWNLOAD_URL}`);
     }
   }
@@ -1021,6 +1085,7 @@ async function startBackgroundChatLogin() {
     cwd: REPO_ROOT || app.getPath("home"),
     stdio: ["ignore", "pipe", "pipe"],
     env: authCommand.env,
+    shell: process.platform === "win32" && authCommand.command.toLowerCase().endsWith(".cmd"),
   });
   authLoginProcess = child;
   attachChildLogs(child, getAuthLogPath());
@@ -1271,6 +1336,14 @@ function getDaemonStatus() {
 }
 
 function openCommandInTerminal(command) {
+  if (process.platform === "win32") {
+    const child = spawn(process.env.ComSpec || "cmd.exe", ["/d", "/c", "start", "cmd.exe", "/k", command], {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    return true;
+  }
   if (process.platform !== "darwin") {
     return false;
   }
@@ -1455,7 +1528,7 @@ function registerIpcHandlers() {
     if (!context) {
       throw new Error("현재 환경에서는 항상 켜짐 모드를 설치할 수 없습니다.");
     }
-    await runCommand("/bin/zsh", [context.installScriptPath], REPO_ROOT, "background agent install");
+    await runCommand(process.platform === "win32" ? "cmd.exe" : "/bin/zsh", process.platform === "win32" ? ["/d", "/c", context.installScriptPath] : [context.installScriptPath], REPO_ROOT, "background agent install");
     return getDaemonStatus();
   });
 
@@ -1464,7 +1537,7 @@ function registerIpcHandlers() {
     if (!context) {
       throw new Error("현재 환경에서는 항상 켜짐 모드를 제거할 수 없습니다.");
     }
-    await runCommand("/bin/zsh", [context.uninstallScriptPath], REPO_ROOT, "background agent uninstall");
+    await runCommand(process.platform === "win32" ? "cmd.exe" : "/bin/zsh", process.platform === "win32" ? ["/d", "/c", context.uninstallScriptPath] : [context.uninstallScriptPath], REPO_ROOT, "background agent uninstall");
     return getDaemonStatus();
   });
 }

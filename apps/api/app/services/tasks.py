@@ -127,9 +127,10 @@ def build_capabilities() -> CapabilityOut:
         tools.extend(LIVE_CAPABILITY_TOOLS)
     else:
         tools.append(LIVE_CAPABILITY_TOOLS[-1])
+    coder_model = "codex" if runtime.selected_mode == "codex" else runtime.model
     return CapabilityOut(
         planner_model=runtime.model,
-        coder_model="codex",
+        coder_model=coder_model,
         worker_model="gpt-5-mini",
         sandbox="codex CLI workspace sandbox" if runtime.selected_mode == "codex" else "local workspace + desktop control gateway",
         desktop_control=runtime.selected_mode in {"live", "demo"},

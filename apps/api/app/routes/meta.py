@@ -4,8 +4,8 @@ import subprocess
 
 from fastapi import APIRouter, HTTPException, status
 
-from ..execution import set_runtime_preference
-from ..schemas import CapabilityOut, RuntimePreferenceUpdate
+from ..execution import clear_openai_api_key, set_openai_api_key, set_runtime_preference
+from ..schemas import ApiKeyUpdate, CapabilityOut, RuntimePreferenceUpdate
 from ..services import build_capabilities
 
 router = APIRouter(tags=["meta"])
@@ -19,6 +19,25 @@ def get_capabilities() -> CapabilityOut:
 @router.post("/runtime/preferences", response_model=CapabilityOut)
 def update_runtime_preferences(payload: RuntimePreferenceUpdate) -> CapabilityOut:
     set_runtime_preference(payload.preferred_mode)
+    return build_capabilities()
+
+
+@router.post("/auth/api-key", response_model=CapabilityOut)
+def update_api_key(payload: ApiKeyUpdate) -> CapabilityOut:
+    api_key = (payload.api_key or "").strip()
+    if not api_key:
+        clear_openai_api_key()
+        return build_capabilities()
+    try:
+        set_openai_api_key(api_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return build_capabilities()
+
+
+@router.delete("/auth/api-key", response_model=CapabilityOut)
+def delete_api_key() -> CapabilityOut:
+    clear_openai_api_key()
     return build_capabilities()
 
 

@@ -165,6 +165,10 @@ class CapabilityOut(BaseModel):
     approval_actions: list[str]
 
 
+class ApiKeyUpdate(BaseModel):
+    api_key: str | None = None
+
+
 class RuntimeDiagnosticsOut(BaseModel):
     app_version: str
     selected_mode: str
@@ -339,6 +343,8 @@ class OnboardingStatusOut(BaseModel):
     remote_origin: str | None
     codex_login_required: bool
     auth_ready: bool
+    chatgpt_login_ready: bool
+    api_key_ready: bool
     workspace_ready: bool
     workspace_access_ready: bool
     browser_ready: bool

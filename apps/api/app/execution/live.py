@@ -27,7 +27,7 @@ from ..models import (
 )
 from ..settings import ARTIFACTS_DIR, PUBLIC_ARTIFACT_PREFIX
 from .browser import BrowserAutomation
-from .config import RuntimeStatus, get_runtime_status
+from .config import RuntimeStatus, get_configured_openai_api_key, get_runtime_status
 
 TASK_LOAD_OPTIONS = (
     selectinload(Task.steps),
@@ -168,7 +168,7 @@ def _run_live_task(
                 headless=runtime.headless_browser,
             )
 
-        client = OpenAI()
+        client = OpenAI(api_key=get_configured_openai_api_key())
         if approval_id is None:
             _transition(task, TaskStatus.PLANNING)
             append_log_event(

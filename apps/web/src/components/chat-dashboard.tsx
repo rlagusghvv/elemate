@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  clearApiKey,
   enableTailscaleServe,
   fetchOnboardingStatus,
   fetchPortalMe,
   fetchTailscaleStatus,
   resetTailscaleServe,
+  saveApiKey,
   updateOnboardingStatus,
   updatePortalMe,
 } from "@/lib/api";
@@ -78,10 +80,16 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
   useEffect(() => {
     const authReady = Boolean(onboarding?.auth_ready);
     if (authReady && !previousAuthReady.current) {
-      showStatus(onboarding?.auth_account_email ? `AI 연결 완료: ${onboarding.auth_account_email}` : "AI 연결이 완료되었습니다.");
+      showStatus(
+        onboarding?.api_key_ready && !onboarding?.chatgpt_login_ready
+          ? "API 키 연결이 완료되었습니다."
+          : onboarding?.auth_account_email
+            ? `AI 연결 완료: ${onboarding.auth_account_email}`
+            : "AI 연결이 완료되었습니다.",
+      );
     }
     previousAuthReady.current = authReady;
-  }, [onboarding?.auth_account_email, onboarding?.auth_ready]);
+  }, [onboarding?.api_key_ready, onboarding?.chatgpt_login_ready, onboarding?.auth_account_email, onboarding?.auth_ready]);
 
   useEffect(() => {
     return () => {
@@ -468,6 +476,34 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
     }
   }
 
+  async function handleSaveApiKey(value: string) {
+    setIsBusy(true);
+    setError(null);
+    try {
+      await saveApiKey({ api_key: value });
+      await refreshAll();
+      showStatus("API 키를 저장했습니다.");
+    } catch (apiKeyError) {
+      setError(apiKeyError instanceof Error ? apiKeyError.message : "API 키를 저장하지 못했습니다.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleClearApiKey() {
+    setIsBusy(true);
+    setError(null);
+    try {
+      await clearApiKey();
+      await refreshAll();
+      showStatus("API 키를 제거했습니다.");
+    } catch (apiKeyError) {
+      setError(apiKeyError instanceof Error ? apiKeyError.message : "API 키를 제거하지 못했습니다.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function handleOpenRemoteAccessApp() {
     const desktopBridge = window.elemateDesktop ?? window.forgeDesktop;
     if (!desktopBridge) {
@@ -669,6 +705,8 @@ export function ChatDashboard({ variant = "local" }: ChatDashboardProps) {
             statusMessage={statusMessage}
             onRefresh={() => void refreshAll()}
             onOpenChatLogin={() => void handleOpenChatLogin()}
+            onSaveApiKey={(value) => void handleSaveApiKey(value)}
+            onClearApiKey={() => void handleClearApiKey()}
             onOpenWorkspacePicker={() => void handleOpenWorkspacePicker()}
             onOpenRemoteAccessApp={() => void handleOpenRemoteAccessApp()}
             onStartRemoteAccessFlow={() => void handleStartRemoteAccessFlow()}

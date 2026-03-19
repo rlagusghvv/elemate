@@ -1,5 +1,14 @@
 from .codex_cli import cancel_codex_task, has_codex_session, resume_codex_task, running_codex_task_count, start_codex_task
-from .config import AuthSessionStatus, RuntimeStatus, get_auth_session_status, get_runtime_status, set_runtime_preference
+from .config import (
+    AuthSessionStatus,
+    RuntimeStatus,
+    clear_openai_api_key,
+    get_auth_session_status,
+    get_configured_openai_api_key,
+    get_runtime_status,
+    set_openai_api_key,
+    set_runtime_preference,
+)
 from .live import cancel_live_task, has_live_session, resume_live_task, running_task_count as running_live_task_count, start_live_task
 
 
@@ -59,11 +68,14 @@ __all__ = [
     "AuthSessionStatus",
     "RuntimeStatus",
     "cancel_task_runtime",
+    "clear_openai_api_key",
     "get_auth_session_status",
+    "get_configured_openai_api_key",
     "get_runtime_status",
     "has_task_session",
     "resume_task_execution",
     "running_task_count",
+    "set_openai_api_key",
     "set_runtime_preference",
     "start_task_execution",
 ]

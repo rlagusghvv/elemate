@@ -23,21 +23,38 @@ function envFirst(...names) {
   return null;
 }
 
-function resolveArch(value) {
+function resolveArch(value, explicitPlatform) {
+  const platform = (explicitPlatform || process.env.ELEMATE_DESKTOP_PLATFORM || os.platform()).toLowerCase();
   const normalized = (value || os.arch()).toLowerCase();
   if (normalized === "arm64" || normalized === "aarch64") {
+    if (platform === "win32") {
+      return {
+        cli: "arm64",
+        pythonBuildStandalone: "aarch64-pc-windows-msvc",
+        platform,
+      };
+    }
     return {
       cli: "arm64",
       pythonBuildStandalone: "aarch64-apple-darwin",
+      platform,
     };
   }
   if (normalized === "x64" || normalized === "x86_64") {
+    if (platform === "win32") {
+      return {
+        cli: "x64",
+        pythonBuildStandalone: "x86_64-pc-windows-msvc",
+        platform,
+      };
+    }
     return {
       cli: "x64",
       pythonBuildStandalone: "x86_64-apple-darwin",
+      platform,
     };
   }
-  throw new Error(`Unsupported macOS desktop build arch: ${normalized}`);
+  throw new Error(`Unsupported desktop build arch: ${normalized}`);
 }
 
 async function downloadFile(url, destination) {
@@ -69,6 +86,50 @@ function runOrThrow(command, args, cwd, label, env = process.env) {
   });
   if (result.status !== 0) {
     throw new Error(`${label} failed with exit code ${result.status ?? "unknown"}`);
+  }
+}
+
+function moveDirectoryContents(sourceDir, destinationDir) {
+  for (const entry of fs.readdirSync(sourceDir)) {
+    fs.renameSync(path.join(sourceDir, entry), path.join(destinationDir, entry));
+  }
+}
+
+function resolveBundledPythonExecutable(root) {
+  const candidates = [
+    path.join(root, "bin", "python3.11"),
+    path.join(root, "bin", "python3"),
+    path.join(root, "bin", "python"),
+    path.join(root, "python.exe"),
+    path.join(root, "python", "python.exe"),
+    path.join(root, "install", "python.exe"),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
+function resolveBundledPipCommand(root) {
+  const candidates = [
+    path.join(root, "bin", "pip3.11"),
+    path.join(root, "bin", "pip3"),
+    path.join(root, "bin", "pip"),
+    path.join(root, "Scripts", "pip.exe"),
+    path.join(root, "python", "Scripts", "pip.exe"),
+    path.join(root, "install", "Scripts", "pip.exe"),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
+function normalizeBundledPythonLayout(root) {
+  const nestedRoots = [path.join(root, "python"), path.join(root, "install")];
+  for (const nestedRoot of nestedRoots) {
+    if (!fs.existsSync(nestedRoot) || !fs.statSync(nestedRoot).isDirectory()) {
+      continue;
+    }
+    if (!resolveBundledPythonExecutable(root) && resolveBundledPythonExecutable(nestedRoot)) {
+      moveDirectoryContents(nestedRoot, root);
+      fs.rmSync(nestedRoot, { recursive: true, force: true });
+      return;
+    }
   }
 }
 
@@ -139,7 +200,8 @@ function createBundledPythonArchive(sourceDir, archivePath) {
   );
 }
 
-const arch = resolveArch(process.argv[2] || envFirst("ELEMATE_DESKTOP_ARCH", "npm_config_arch"));
+const requestedPlatform = process.argv[3] || null;
+const arch = resolveArch(process.argv[2] || envFirst("ELEMATE_DESKTOP_ARCH", "npm_config_arch"), requestedPlatform);
 const tag = envFirst("ELEMATE_PYTHON_STANDALONE_TAG") || "20251202";
 const version = envFirst("ELEMATE_PYTHON_STANDALONE_VERSION") || "3.11.14";
 const asset = `cpython-${version}+${tag}-${arch.pythonBuildStandalone}-install_only_stripped.tar.gz`;
@@ -148,9 +210,6 @@ const downloadUrl =
   envFirst("ELEMATE_PYTHON_STANDALONE_URL") ||
   `https://github.com/astral-sh/python-build-standalone/releases/download/${tag}/${encodedAsset}`;
 const archivePath = path.join(cacheDir, `${arch.cli}-${asset}`);
-const bundledPython = path.join(pythonRoot, "bin", "python3.11");
-const bundledPip = path.join(pythonRoot, "bin", "pip3.11");
-
 await fs.promises.mkdir(runtimeRoot, { recursive: true });
 await fs.promises.mkdir(cacheDir, { recursive: true });
 
@@ -169,22 +228,33 @@ runOrThrow(
   "Extract standalone Python runtime",
 );
 
-if (!fs.existsSync(bundledPython)) {
-  throw new Error(`Bundled Python executable is missing: ${bundledPython}`);
+normalizeBundledPythonLayout(pythonRoot);
+
+const bundledPython = resolveBundledPythonExecutable(pythonRoot);
+if (!bundledPython) {
+  throw new Error(`Bundled Python executable is missing in: ${pythonRoot}`);
 }
 
+spawnSync(bundledPython, ["-m", "ensurepip", "--upgrade"], {
+  cwd: repoRoot,
+  stdio: "inherit",
+  env: process.env,
+});
 runOrThrow(bundledPython, ["-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"], repoRoot, "Upgrade bundled pip tooling");
-runOrThrow(bundledPip, ["install", apiDir], repoRoot, "Install EleMate API into bundled Python");
-pruneBundledPython(pythonRoot);
+runOrThrow(bundledPython, ["-m", "pip", "install", apiDir], repoRoot, "Install EleMate API into bundled Python");
+if (arch.platform === "darwin") {
+  pruneBundledPython(pythonRoot);
+}
 
 const manifest = {
   generated_at: new Date().toISOString(),
   arch: arch.cli,
+  platform: arch.platform,
   python_version: version,
   source_tag: tag,
   asset,
   download_url: downloadUrl,
-  executable: "bin/python3.11",
+  executable: arch.platform === "win32" ? "python.exe" : "bin/python3.11",
 };
 
 fs.writeFileSync(path.join(pythonRoot, ".elemate-python-runtime.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");

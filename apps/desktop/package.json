@@ -10,7 +10,9 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder --publish never",
     "dist:mac:arm64": "electron-builder --publish never --mac dmg zip --arm64",
-    "dist:mac:x64": "electron-builder --publish never --mac dmg zip --x64"
+    "dist:mac:x64": "electron-builder --publish never --mac dmg zip --x64",
+    "dist:win:x64": "electron-builder --publish never --win nsis zip --x64",
+    "dist:win:arm64": "electron-builder --publish never --win nsis zip --arm64"
   },
   "devDependencies": {
     "@electron/notarize": "^2.5.0",
@@ -81,6 +83,13 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "win": {
+      "artifactName": "EleMate-windows-${arch}.${ext}",
+      "target": [
+        "nsis",
+        "zip"
+      ]
     }
   }
 }

@@ -14,6 +14,8 @@
     "prepare:desktop-python": "node scripts/fetch_elemate_python_runtime.mjs",
     "prepare:desktop-python:arm64": "node scripts/fetch_elemate_python_runtime.mjs arm64",
     "prepare:desktop-python:x64": "node scripts/fetch_elemate_python_runtime.mjs x64",
+    "prepare:desktop-python:win:arm64": "node scripts/fetch_elemate_python_runtime.mjs arm64 win32",
+    "prepare:desktop-python:win:x64": "node scripts/fetch_elemate_python_runtime.mjs x64 win32",
     "lint:web": "npm --workspace apps/web run lint",
     "setup:desktop": "./scripts/setup_elemate_desktop.sh",
     "setup:public-site": "./scripts/setup_elemate_public_site.sh",
@@ -30,10 +32,16 @@
     "pack:desktop": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python && npm --workspace apps/desktop run pack",
     "dist:desktop": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python && npm --workspace apps/desktop run dist",
     "dist:desktop:arm64": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python:arm64 && npm --workspace apps/desktop run dist:mac:arm64",
-    "dist:desktop:x64": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python:x64 && npm --workspace apps/desktop run dist:mac:x64"
+    "dist:desktop:x64": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python:x64 && npm --workspace apps/desktop run dist:mac:x64",
+    "dist:desktop:win:x64": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python:win:x64 && npm --workspace apps/desktop run dist:win:x64",
+    "dist:desktop:win:arm64": "npm run build:web && npm run prepare:desktop-runtime && npm run prepare:desktop-python:win:arm64 && npm --workspace apps/desktop run dist:win:arm64"
   },
   "devDependencies": {
-    "@openai/codex": "^0.107.0",
-    "@openai/codex-darwin-x64": "npm:@openai/codex@^0.107.0-darwin-x64"
+    "@openai/codex": "^0.107.0"
+  },
+  "optionalDependencies": {
+    "@openai/codex-darwin-x64": "npm:@openai/codex@^0.107.0-darwin-x64",
+    "@openai/codex-win32-arm64": "npm:@openai/codex@^0.107.0-win32-arm64",
+    "@openai/codex-win32-x64": "npm:@openai/codex@^0.107.0-win32-x64"
   }
 }

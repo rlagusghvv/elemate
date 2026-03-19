@@ -102,7 +102,7 @@ function copyWebRuntime() {
 }
 
 function archiveWebRuntime() {
-  const result = spawnSync("/usr/bin/tar", ["-czf", runtimeWebArchive, "-C", runtimeWebDir, "."], {
+  const result = spawnSync("tar", ["-czf", runtimeWebArchive, "-C", runtimeWebDir, "."], {
     stdio: "inherit",
   });
   if (result.status !== 0) {
@@ -149,7 +149,12 @@ function copyCodexRuntime() {
 
   const vendorDestination = path.join(runtimeCodexDir, "vendor");
   fs.mkdirSync(vendorDestination, { recursive: true });
-  const platformPackages = ["@openai/codex-darwin-arm64", "@openai/codex-darwin-x64"];
+  const platformPackages = [
+    "@openai/codex-darwin-arm64",
+    "@openai/codex-darwin-x64",
+    "@openai/codex-win32-arm64",
+    "@openai/codex-win32-x64",
+  ];
   let copiedVendor = false;
 
   for (const packageName of platformPackages) {
@@ -167,7 +172,7 @@ function copyCodexRuntime() {
 
   if (!copiedVendor) {
     throw new Error(
-      "Codex 플랫폼 런타임을 찾지 못했습니다. `npm install`로 @openai/codex-darwin-arm64 와 @openai/codex-darwin-x64를 함께 설치하세요.",
+      "Codex 플랫폼 런타임을 찾지 못했습니다. `npm install`로 EleMate 데스크탑용 Codex 패키지들을 먼저 설치하세요.",
     );
   }
 
@@ -201,17 +206,43 @@ if [ ! -x "$CODEX_BIN" ]; then
 fi
 
 if [ -d "$RG_DIR" ]; then
-  export PATH="$RG_DIR${process.platform === "win32" ? ";" : ":"}$PATH"
+  export PATH="$RG_DIR:$PATH"
 fi
 
 exec "$CODEX_BIN" "$@"
 `;
   fs.writeFileSync(launcherPath, launcherContents, "utf8");
   fs.chmodSync(launcherPath, 0o755);
+
+  const windowsLauncherPath = path.join(runtimeCodexDir, "bin", "codex.cmd");
+  const windowsLauncherContents = `@echo off
+setlocal
+set "SCRIPT_DIR=%~dp0"
+for %%I in ("%SCRIPT_DIR%..") do set "RUNTIME_ROOT=%%~fI"
+
+if /I "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
+  set "TARGET=aarch64-pc-windows-msvc"
+) else (
+  set "TARGET=x86_64-pc-windows-msvc"
+)
+
+set "CODEX_BIN=%RUNTIME_ROOT%\\vendor\\%TARGET%\\codex\\codex.exe"
+set "RG_DIR=%RUNTIME_ROOT%\\vendor\\%TARGET%\\path"
+
+if exist "%RG_DIR%" set "PATH=%RG_DIR%;%PATH%"
+
+if not exist "%CODEX_BIN%" (
+  echo Bundled Codex binary not found: %CODEX_BIN% 1>&2
+  exit /b 1
+)
+
+"%CODEX_BIN%" %*
+`;
+  fs.writeFileSync(windowsLauncherPath, windowsLauncherContents, "utf8");
 }
 
 function archiveCodexRuntime() {
-  const result = spawnSync("/usr/bin/tar", ["-czf", runtimeCodexArchive, "-C", runtimeCodexDir, "."], {
+  const result = spawnSync("tar", ["-czf", runtimeCodexArchive, "-C", runtimeCodexDir, "."], {
     stdio: "inherit",
   });
   if (result.status !== 0) {

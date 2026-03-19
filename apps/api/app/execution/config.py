@@ -90,10 +90,59 @@ class RuntimeStatus:
 
 SUPPORTED_RUNTIME_MODES = {"auto", "codex", "live", "demo"}
 PREFERENCES_PATH = DATA_DIR / "runtime_preferences.json"
+AUTH_SECRETS_PATH = DATA_DIR / "auth_secrets.json"
+
+
+def _read_auth_secrets() -> dict:
+    if not AUTH_SECRETS_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(AUTH_SECRETS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_auth_secrets(payload: dict) -> None:
+    AUTH_SECRETS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    AUTH_SECRETS_PATH.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def get_configured_openai_api_key() -> str | None:
+    env_value = _env_first("OPENAI_API_KEY", "ELEMATE_OPENAI_API_KEY", "FORGE_OPENAI_API_KEY")
+    if env_value:
+        return env_value.strip() or None
+    secrets = _read_auth_secrets()
+    stored = secrets.get("openai_api_key")
+    if isinstance(stored, str) and stored.strip():
+        return stored.strip()
+    return None
+
+
+def set_openai_api_key(api_key: str) -> None:
+    normalized = api_key.strip()
+    if not normalized:
+        raise ValueError("OpenAI API key must not be empty.")
+    secrets = _read_auth_secrets()
+    secrets["openai_api_key"] = normalized
+    _write_auth_secrets(secrets)
+
+
+def clear_openai_api_key() -> None:
+    secrets = _read_auth_secrets()
+    if "openai_api_key" in secrets:
+        secrets.pop("openai_api_key", None)
+        if secrets:
+            _write_auth_secrets(secrets)
+        elif AUTH_SECRETS_PATH.exists():
+            AUTH_SECRETS_PATH.unlink()
 
 
 def get_auth_session_status() -> AuthSessionStatus:
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = get_configured_openai_api_key()
     bundled_codex_available = _env_flag_first(("ELEMATE_BUNDLED_CODEX_AVAILABLE", "FORGE_BUNDLED_CODEX_AVAILABLE"), False)
     codex_cli_available = shutil.which("codex") is not None or bundled_codex_available
     auth_path = Path.home() / ".codex" / "auth.json"
@@ -132,7 +181,7 @@ def get_auth_session_status() -> AuthSessionStatus:
                 if isinstance(plan_value, str):
                     plan_type = plan_value
 
-    provider = "chatgpt_login" if codex_login_configured else "api_key" if api_key else "none"
+    provider = "api_key" if api_key else "chatgpt_login" if codex_login_configured else "none"
     return AuthSessionStatus(
         provider=provider,
         codex_cli_available=codex_cli_available,
@@ -185,10 +234,10 @@ def get_runtime_status() -> RuntimeStatus:
     preferred_mode = get_runtime_preference()
 
     available_modes: list[str] = []
-    if codex_available:
-        available_modes.append("codex")
     if live_available:
         available_modes.append("live")
+    if codex_available:
+        available_modes.append("codex")
     if demo_available:
         available_modes.append("demo")
 
@@ -232,12 +281,12 @@ def get_runtime_status() -> RuntimeStatus:
             selected_mode = "disabled"
             reason = "Demo fallback is disabled and no live runtime is configured."
     else:
-        if codex_available:
+        if live_available:
+            selected_mode = "live"
+            reason = "OpenAI API key is configured, so API mode will be used by default."
+        elif codex_available:
             selected_mode = "codex"
             reason = "ChatGPT login was detected, so Codex CLI will be used by default."
-        elif live_available:
-            selected_mode = "live"
-            reason = "OpenAI Responses API is configured."
         elif demo_available:
             selected_mode = "demo"
             reason = "No live runtime is configured, so the dashboard will fall back to demo execution."

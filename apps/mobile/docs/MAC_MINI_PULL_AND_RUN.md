@@ -26,7 +26,7 @@ cat ~/.ssh/id_ed25519.pub
 Add the printed public key to GitHub as a read-only deploy key for:
 
 ```txt
-git@github.com:rlagusghvv/otnal-mobile.git
+git@github.com:rlagusghvv/elemate.git
 ```
 
 Then test:
@@ -38,8 +38,9 @@ ssh -T git@github.com
 ## 3. Clone the code
 
 ```sh
-git clone git@github.com:rlagusghvv/otnal-mobile.git ~/Documents/otnal-mobile
-cd ~/Documents/otnal-mobile
+mkdir -p ~/Documents/Playground
+git clone git@github.com:rlagusghvv/elemate.git ~/Documents/Playground/elemate
+cd ~/Documents/Playground/elemate/apps/mobile
 ```
 
 ## 4. Configure server secrets
@@ -64,7 +65,7 @@ Do not commit `.env.local`.
 ## 5. Bootstrap and keep running
 
 ```sh
-cd ~/Documents/otnal-mobile
+cd ~/Documents/Playground/elemate/apps/mobile
 npm run server:bootstrap
 ```
 
@@ -80,7 +81,7 @@ curl http://127.0.0.1:8787/health
 ## 6. Pull updates later
 
 ```sh
-cd ~/Documents/otnal-mobile
+cd ~/Documents/Playground/elemate/apps/mobile
 npm run server:sync
 ```
 

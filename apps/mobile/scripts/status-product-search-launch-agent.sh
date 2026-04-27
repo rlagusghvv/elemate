@@ -10,7 +10,7 @@ DOMAIN="gui/$(id -u)"
 PORT="8787"
 
 if [[ -f "$APP_DIR/.env.local" ]]; then
-  ENV_PORT="$(grep -E '^PORT=' "$APP_DIR/.env.local" | tail -n 1 | cut -d '=' -f 2-)"
+  ENV_PORT="$(grep -E '^PORT=' "$APP_DIR/.env.local" | tail -n 1 | cut -d '=' -f 2- || true)"
   ENV_PORT="${ENV_PORT%\"}"
   ENV_PORT="${ENV_PORT#\"}"
   ENV_PORT="${ENV_PORT%\'}"

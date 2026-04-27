@@ -16,7 +16,7 @@
 3. Confirm release readiness:
 
 ```sh
-cd /Users/kimhyeonho/Documents/Playground/apps/mobile
+cd ~/Documents/otnal-mobile
 EXPO_PUBLIC_PRODUCT_SEARCH_BASE_URL=https://api.your-domain.example npm run release:check
 npm run check
 ```

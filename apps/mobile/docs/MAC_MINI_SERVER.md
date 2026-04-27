@@ -7,7 +7,7 @@ This server keeps Naver Shopping Search credentials off the iOS app. The app cal
 Full clone/setup guide: [MAC_MINI_PULL_AND_RUN.md](./MAC_MINI_PULL_AND_RUN.md).
 
 ```sh
-cd /Users/kimhyeonho/Documents/Playground/apps/mobile
+cd ~/Documents/otnal-mobile
 npm install
 cp .env.example .env.local
 ```
@@ -27,7 +27,7 @@ Do not put `NAVER_CLIENT_ID` or `NAVER_CLIENT_SECRET` into `EXPO_PUBLIC_` variab
 ## Run continuously with LaunchAgent
 
 ```sh
-cd /Users/kimhyeonho/Documents/Playground/apps/mobile
+cd ~/Documents/otnal-mobile
 npm run server:bootstrap
 npm run server:status
 ```
